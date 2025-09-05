@@ -367,40 +367,44 @@ export const authService = {
       console.log('👤 Verificando usuário atual...');
       
       // Verificar sessão do Supabase
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        
-        if (user && !authError) {
-          console.log('✅ Usuário do Supabase encontrado');
+      if (supabase) {
+        try {
+          const { data: { user }, error: authError } = await supabase.auth.getUser();
           
-          try {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', user.id)
-              .single();
-              
-            if (userData) {
-              return {
-                id: userData.id,
-                email: userData.email,
-                name: userData.name,
-                profile: userData.profile,
-              };
+          if (user && !authError) {
+            console.log('✅ Usuário do Supabase encontrado');
+            
+            try {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+                
+              if (userData) {
+                return {
+                  id: userData.id,
+                  email: userData.email,
+                  name: userData.name,
+                  profile: userData.profile,
+                };
+              }
+            } catch (userError) {
+              console.warn('⚠️ Erro ao buscar dados do usuário');
             }
-          } catch (userError) {
-            console.warn('⚠️ Erro ao buscar dados do usuário');
+            
+            return {
+              id: user.id,
+              email: user.email || '',
+              name: user.user_metadata?.name || 'Admin',
+              profile: 'admin',
+            };
           }
-          
-          return {
-            id: user.id,
-            email: user.email || '',
-            name: user.user_metadata?.name || 'Admin',
-            profile: 'admin',
-          };
+        } catch (supabaseError) {
+          console.warn('⚠️ Erro na verificação do Supabase:', supabaseError);
         }
-      } catch (supabaseError) {
-        console.warn('⚠️ Erro na verificação do Supabase:', supabaseError);
+      } else {
+        console.warn('⚠️ Cliente Supabase não disponível');
       }
       
       // Verificar localStorage

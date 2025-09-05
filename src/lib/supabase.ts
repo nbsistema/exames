@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import './env-validator'; // Importar validador automaticamente
 
 // Verificar se as variáveis de ambiente existem antes de criar o cliente
+// Verificar se as variáveis de ambiente existem antes de criar o cliente
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -20,12 +21,15 @@ if (supabaseUrl) {
     console.error('❌ Invalid Supabase URL format:', supabaseUrl);
     console.warn('⚠️ URL inválida - usando modo fallback');
   }
+    console.warn('⚠️ URL inválida - usando modo fallback');
+  }
 }
 
 // Limpar URL para evitar problemas de formatação
 const cleanUrl = supabaseUrl?.trim().replace(/\/$/, '') || '';
 const cleanKey = supabaseAnonKey?.trim() || '';
 
+// Criar cliente Supabase apenas se as variáveis estiverem disponíveis
 // Criar cliente Supabase apenas se as variáveis estiverem disponíveis
 export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -65,6 +69,10 @@ if (import.meta.env.DEV) {
       })
       .catch(() => {
         console.warn('⚠️ Não foi possível testar a conexão com Supabase');
+      });
+  } else {
+    console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
+  }
       });
   } else {
     console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
