@@ -12,6 +12,8 @@ type AdminTab = 'overview' | 'users' | 'partners' | 'units' | 'reports';
 export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
+  console.log('👑 AdminDashboard renderizando, tab ativa:', activeTab);
+
   const tabs = [
     { id: 'overview', label: 'Visão Geral', icon: Activity },
     { id: 'users', label: 'Usuários', icon: Users },
@@ -23,16 +25,22 @@ export function AdminDashboard() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
+        console.log('📊 Renderizando AdminOverview');
         return <AdminOverview />;
       case 'users':
+        console.log('👥 Renderizando UserManagement');
         return <UserManagement />;
       case 'partners':
+        console.log('🤝 Renderizando PartnerManagement');
         return <PartnerManagement />;
       case 'units':
+        console.log('🏢 Renderizando UnitManagement');
         return <UnitManagement />;
       case 'reports':
+        console.log('📈 Renderizando AdminReports');
         return <AdminReports />;
       default:
+        console.log('📊 Renderizando AdminOverview (default)');
         return <AdminOverview />;
     }
   };

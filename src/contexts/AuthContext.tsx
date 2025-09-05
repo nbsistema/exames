@@ -30,6 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authUser || !supabase) return null;
 
     try {
+      console.log('🔍 Buscando dados do usuário:', authUser.id);
+      
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
@@ -37,35 +39,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        console.warn('⚠️ Erro ao buscar dados do usuário na tabela:', error);
+        console.warn('⚠️ Erro ao buscar dados do usuário na tabela:', error.message);
+        
+        // Se o usuário não existe na tabela public.users, criar entrada
+        if (error.code === 'PGRST116') {
+          console.log('📝 Usuário não existe na tabela public.users, criando entrada...');
+          
+          const fallbackUser = {
+            id: authUser.id,
+            email: authUser.email || '',
+            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
+            profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
+          };
+          
+          // Tentar inserir na tabela
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: fallbackUser.id,
+              email: fallbackUser.email,
+              name: fallbackUser.name,
+              profile: fallbackUser.profile,
+            });
+            
+          if (insertError) {
+            console.warn('⚠️ Erro ao criar entrada na tabela users:', insertError.message);
+          } else {
+            console.log('✅ Entrada criada na tabela users');
+          }
+          
+          return fallbackUser;
+        }
+        
         // Retornar dados básicos se não conseguir buscar da tabela
         return {
           id: authUser.id,
           email: authUser.email || '',
-          name: authUser.user_metadata?.name || 'Usuário',
-          profile: authUser.user_metadata?.profile || 'admin',
+          name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
+          profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
         };
       }
 
+      console.log('✅ Dados do usuário carregados:', userData);
       return {
         id: userData.id,
         email: userData.email,
         name: userData.name,
-        profile: userData.profile,
+        profile: userData.profile as UserProfile,
       };
     } catch (error) {
       console.warn('⚠️ Erro ao buscar dados do usuário:', error);
       return {
         id: authUser.id,
         email: authUser.email || '',
-        name: authUser.user_metadata?.name || 'Usuário',
-        profile: authUser.user_metadata?.profile || 'admin',
+        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
+        profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
       };
     }
   }, []);
 
   // Função para verificar usuário atual
   const checkUser = useCallback(async () => {
+    console.log('🔍 Verificando usuário atual...');
+    
     if (!supabase) {
       console.warn('⚠️ Supabase não configurado');
       setLoading(false);
@@ -74,8 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      console.log('🔍 Verificando usuário atual...');
-      
       const { data: { user: authUser }, error } = await supabase.auth.getUser();
       
       if (error) {
@@ -87,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (authUser) {
         console.log('✅ Usuário autenticado encontrado:', authUser.id);
         const userData = await fetchUserData(authUser);
+        console.log('👤 Dados do usuário processados:', userData);
         setUser(userData);
       } else {
         console.log('ℹ️ Nenhum usuário autenticado');
@@ -102,6 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchUserData]);
 
   useEffect(() => {
+    console.log('🔄 AuthContext useEffect - initialized:', initialized);
     if (initialized) return;
 
     checkUser();
@@ -114,12 +150,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       try {
         if (event === 'SIGNED_IN' && session?.user) {
+          console.log('✅ Usuário logado, buscando dados...');
           const userData = await fetchUserData(session.user);
+          console.log('👤 Dados obtidos:', userData);
           setUser(userData);
         } else if (event === 'SIGNED_OUT') {
+          console.log('🚪 Usuário deslogado');
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Manter usuário logado quando token é renovado
+          console.log('🔄 Token renovado');
           const userData = await fetchUserData(session.user);
           setUser(userData);
         }

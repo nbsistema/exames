@@ -8,8 +8,11 @@ import { CheckupDashboard } from './checkup/CheckupDashboard';
 export function Dashboard() {
   const { user, loading } = useAuth();
 
+  console.log('📊 Dashboard renderizando:', { user: user?.email, profile: user?.profile, loading });
+
   // Mostrar loading se ainda está carregando
   if (loading) {
+    console.log('⏳ Dashboard em loading');
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -22,21 +25,29 @@ export function Dashboard() {
 
   // Se não há usuário, não renderizar nada (será tratado pelo App.tsx)
   if (!user) {
+    console.log('❌ Dashboard sem usuário');
     return null;
   }
+
+  console.log('🎯 Renderizando dashboard para perfil:', user.profile);
 
   const renderDashboard = () => {
     try {
       switch (user.profile) {
         case 'admin':
+          console.log('👑 Renderizando AdminDashboard');
           return <AdminDashboard />;
         case 'parceiro':
+          console.log('🤝 Renderizando PartnerDashboard');
           return <PartnerDashboard />;
         case 'recepcao':
+          console.log('📞 Renderizando ReceptionDashboard');
           return <ReceptionDashboard />;
         case 'checkup':
+          console.log('🏥 Renderizando CheckupDashboard');
           return <CheckupDashboard />;
         default:
+          console.log('❓ Perfil não reconhecido:', user.profile);
           return (
             <div className="p-6">
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -57,6 +68,12 @@ export function Dashboard() {
             <p className="text-red-700">
               Ocorreu um erro ao carregar o dashboard. Tente recarregar a página.
             </p>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-sm">Detalhes do erro</summary>
+              <pre className="text-xs mt-1 bg-red-100 p-2 rounded">
+                {error instanceof Error ? error.message : String(error)}
+              </pre>
+            </details>
           </div>
         </div>
       );

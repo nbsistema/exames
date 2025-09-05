@@ -61,6 +61,7 @@ if (import.meta.env.DEV) {
   
   // Testar conexão apenas se o cliente foi criado
   if (supabase) {
+    console.log('🔄 Testando conexão com Supabase...');
     supabase.auth.getSession()
       .then(({ error }) => {
         if (error) {
