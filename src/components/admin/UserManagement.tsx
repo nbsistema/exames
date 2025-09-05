@@ -20,16 +20,25 @@ export function UserManagement() {
   }, []);
 
   const loadUsers = async () => {
+    setLoading(true);
     try {
+      console.log('📋 Carregando lista de usuários...');
+      
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao carregar usuários:', error);
+        throw error;
+      }
+      
+      console.log('✅ Usuários carregados:', data?.length || 0);
       setUsers(data || []);
     } catch (error) {
       console.error('Error loading users:', error);
+      // Não mostrar erro para o usuário, apenas logar
     } finally {
       setLoading(false);
     }
@@ -41,6 +50,20 @@ export function UserManagement() {
 
     try {
       console.log('👥 Criando novo usuário:', formData);
+      
+      // Validar dados antes de enviar
+      if (!formData.email.trim() || !formData.name.trim()) {
+        alert('Email e nome são obrigatórios');
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.email.includes('@')) {
+        alert('Email deve ter formato válido');
+        setLoading(false);
+        return;
+      }
+      
       const { error } = await createUser(
         formData.email,
         formData.name.trim(),
@@ -54,6 +77,10 @@ export function UserManagement() {
       }
 
       console.log('✅ Usuário criado com sucesso');
+      
+      // Aguardar um pouco antes de recarregar a lista
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
