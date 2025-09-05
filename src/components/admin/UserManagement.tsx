@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
-import { supabase, AppUser, UserProfile } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { Plus, Edit, Trash2 } from 'lucide-react';
+import { supabase, supabaseAdmin, AppUser, UserProfile } from '../../lib/supabase';
+import { authService } from '../../lib/auth';
 
 export function UserManagement() {
-  const { createUser } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [formData, setFormData] = useState({
@@ -20,25 +20,34 @@ export function UserManagement() {
   }, []);
 
   const loadUsers = async () => {
+    if (!supabase) {
+      console.warn('⚠️ Supabase não configurado');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      console.log('📋 Carregando lista de usuários...');
+      console.log('📋 Carregando usuários da tabela public.users...');
       
+      // Consultar apenas a tabela public.users (não auth.users)
       const { data, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, email, name, profile, created_at, updated_at')
         .order('created_at', { ascending: false });
 
       if (error) {
         console.error('❌ Erro ao carregar usuários:', error);
-        throw error;
+        // Não mostrar erro para o usuário, apenas logar
+        setUsers([]);
+        return;
       }
       
       console.log('✅ Usuários carregados:', data?.length || 0);
       setUsers(data || []);
     } catch (error) {
-      console.error('Error loading users:', error);
-      // Não mostrar erro para o usuário, apenas logar
+      console.error('❌ Erro interno ao carregar usuários:', error);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -58,12 +67,12 @@ export function UserManagement() {
       return;
     }
     
-    setLoading(true);
+    setSubmitting(true);
 
     try {
-      console.log('👥 Criando novo usuário:', formData);
+      console.log('👥 Iniciando criação de usuário:', formData);
       
-      const { error } = await createUser(
+      const { error } = await authService.createUser(
         formData.email,
         formData.name.trim(),
         formData.profile
@@ -78,17 +87,17 @@ export function UserManagement() {
       console.log('✅ Usuário criado com sucesso');
       
       // Aguardar um pouco antes de recarregar a lista
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
       alert('Usuário criado com sucesso!');
     } catch (error) {
-      console.error('Error creating user:', error);
-      alert('Erro ao criar usuário');
+      console.error('❌ Erro interno na criação:', error);
+      alert('Erro interno ao criar usuário');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -104,9 +113,9 @@ export function UserManagement() {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || !supabase) return;
     
-    setLoading(true);
+    setSubmitting(true);
 
     try {
       console.log('✏️ Atualizando usuário:', editingUser.id, formData);
@@ -132,10 +141,10 @@ export function UserManagement() {
       setFormData({ name: '', email: '', profile: 'parceiro' });
       alert('Usuário atualizado com sucesso!');
     } catch (error) {
-      console.error('Error updating user:', error);
-      alert('Erro ao atualizar usuário');
+      console.error('❌ Erro interno na atualização:', error);
+      alert('Erro interno ao atualizar usuário');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -144,28 +153,42 @@ export function UserManagement() {
       return;
     }
 
+    if (!supabaseAdmin) {
+      alert('Operação não disponível - Service Role Key não configurada');
+      return;
+    }
+
     setLoading(true);
 
     try {
       console.log('🗑️ Excluindo usuário:', userId);
       
-      const { error } = await supabase
+      // 1. Remover da tabela public.users
+      const { error: deleteUserError } = await supabaseAdmin
         .from('users')
         .delete()
         .eq('id', userId);
 
-      if (error) {
-        console.error('❌ Erro ao excluir usuário:', error);
-        alert(`Erro ao excluir usuário: ${error.message}`);
+      if (deleteUserError) {
+        console.error('❌ Erro ao excluir da tabela users:', deleteUserError);
+        alert(`Erro ao excluir usuário: ${deleteUserError.message}`);
         return;
+      }
+
+      // 2. Remover do auth.users
+      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+      if (deleteAuthError) {
+        console.warn('⚠️ Erro ao excluir do auth (usuário já removido da tabela):', deleteAuthError);
+        // Continuar mesmo com erro no auth, pois o usuário já foi removido da tabela
       }
 
       console.log('✅ Usuário excluído com sucesso');
       await loadUsers();
       alert('Usuário excluído com sucesso!');
     } catch (error) {
-      console.error('Error deleting user:', error);
-      alert('Erro ao excluir usuário');
+      console.error('❌ Erro interno na exclusão:', error);
+      alert('Erro interno ao excluir usuário');
     } finally {
       setLoading(false);
     }
@@ -184,6 +207,21 @@ export function UserManagement() {
     recepcao: 'Recepção'
   };
 
+  const getProfileColor = (profile: UserProfile) => {
+    switch (profile) {
+      case 'admin':
+        return 'bg-red-100 text-red-800';
+      case 'parceiro':
+        return 'bg-blue-100 text-blue-800';
+      case 'checkup':
+        return 'bg-purple-100 text-purple-800';
+      case 'recepcao':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   if (loading && users.length === 0) {
     return (
       <div className="flex justify-center py-12">
@@ -195,10 +233,16 @@ export function UserManagement() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-900">Gestão de Usuários</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Gestão de Usuários</h2>
+          <p className="text-sm text-gray-600">
+            {users.length} usuário{users.length !== 1 ? 's' : ''} cadastrado{users.length !== 1 ? 's' : ''}
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={submitting}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           <Plus className="w-4 h-4" />
           <span>Novo Usuário</span>
@@ -212,13 +256,14 @@ export function UserManagement() {
           </h3>
           <form onSubmit={editingUser ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
               <input
                 type="text"
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Nome completo do usuário"
               />
             </div>
             <div>
@@ -229,14 +274,15 @@ export function UserManagement() {
                 disabled={!!editingUser}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${editingUser ? 'bg-gray-100' : ''}`}
+                className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${editingUser ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                placeholder="email@exemplo.com"
               />
               {editingUser && (
                 <p className="text-xs text-gray-500 mt-1">Email não pode ser alterado</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Perfil de Acesso</label>
               <select
                 value={formData.profile}
                 onChange={(e) => setFormData({ ...formData, profile: e.target.value as UserProfile })}
@@ -251,93 +297,112 @@ export function UserManagement() {
             <div className="md:col-span-3 flex space-x-3">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={submitting}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {loading ? (editingUser ? 'Atualizando...' : 'Criando...') : (editingUser ? 'Atualizar Usuário' : 'Criar Usuário')}
+                {submitting ? (editingUser ? 'Atualizando...' : 'Criando...') : (editingUser ? 'Atualizar Usuário' : 'Criar Usuário')}
               </button>
               <button
                 type="button"
                 onClick={resetForm}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                disabled={submitting}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50 transition-colors"
               >
                 Cancelar
               </button>
             </div>
           </form>
           {!editingUser && (
-            <p className="text-sm text-gray-500 mt-2">
-              Senha padrão: <code className="bg-gray-100 px-1 rounded">nb@123</code> - O usuário pode fazer login imediatamente.
-            </p>
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Informações importantes:</strong>
+                <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
+                <br />• O usuário pode fazer login imediatamente após a criação
+                <br />• Email será confirmado automaticamente
+              </p>
+            </div>
           )}
         </div>
       )}
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Nome
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Perfil
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Criado em
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Ações
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {users.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {user.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {user.email}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    user.profile === 'admin' ? 'bg-red-100 text-red-800' :
-                    user.profile === 'parceiro' ? 'bg-blue-100 text-blue-800' :
-                    user.profile === 'checkup' ? 'bg-purple-100 text-purple-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {profileLabels[user.profile]}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(user.created_at).toLocaleDateString('pt-BR')}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="text-blue-600 hover:text-blue-800 transition-colors"
-                      title="Editar usuário"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id, user.name)}
-                      className="text-red-600 hover:text-red-800 transition-colors"
-                      title="Excluir usuário"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Nome
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Email
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Perfil
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Criado em
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    {loading ? 'Carregando usuários...' : 'Nenhum usuário cadastrado'}
+                  </td>
+                </tr>
+              ) : (
+                users.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {user.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {user.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProfileColor(user.profile)}`}>
+                        {profileLabels[user.profile]}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(user.created_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEdit(user)}
+                          disabled={loading || submitting}
+                          className="text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
+                          title="Editar usuário"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user.id, user.name)}
+                          disabled={loading || submitting}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
+                          title="Excluir usuário"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

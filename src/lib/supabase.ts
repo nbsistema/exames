@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import './env-validator'; // Importar validador automaticamente
-
 // Verificar se as variáveis de ambiente existem antes de criar o cliente
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -54,10 +54,19 @@ export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(
   }
 }) : null;
 
+// Cliente admin com Service Role Key para operações administrativas
+export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+}) : null;
+
 // Debug logs
 if (import.meta.env.DEV) {
   console.log('🔗 Supabase URL:', supabaseUrl);
   console.log('🔑 Supabase anon key (início):', supabaseAnonKey?.slice(0, 20) + '...');
+  console.log('🔐 Supabase service key presente:', !!supabaseServiceKey);
   console.log('🔐 Supabase service key presente:', !!supabaseServiceKey);
   
   // Testar conexão apenas se o cliente foi criado
