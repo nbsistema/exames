@@ -1,32 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
-import { supabase, Doctor } from '../../lib/supabase';
+import { supabase, Doctor, Partner } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function DoctorManagement() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     crm: '',
+    partner_id: '',
   });
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadDoctors();
+    loadData();
   }, []);
 
-  const loadDoctors = async () => {
+  const loadData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('doctors')
+      // Carregar parceiros
+      const { data: partnersData, error: partnersError } = await supabase
+        .from('partners')
         .select('*')
+        .order('name');
+
+      if (partnersError) throw partnersError;
+      setPartners(partnersData || []);
+
+      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
+      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
+        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
+        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
+      }
+
+      // Carregar médicos
+      const { data: doctorsData, error: doctorsError } = await supabase
+        .from('doctors')
+        .select(`
+          *,
+          partners(name)
+        `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setDoctors(data || []);
+      if (doctorsError) throw doctorsError;
+      setDoctors(doctorsData || []);
     } catch (error) {
-      console.error('Error loading doctors:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -37,16 +61,21 @@ export function DoctorManagement() {
     setLoading(true);
 
     try {
-      // In a real implementation, you would get the partner_id from the current user
+      console.log('👨‍⚕️ Criando médico:', formData);
+      
       const { error } = await supabase
         .from('doctors')
-        .insert([{ ...formData, partner_id: 'dummy-partner-id' }]);
+        .insert([formData]);
 
       if (error) throw error;
 
-      await loadDoctors();
+      await loadData();
       setShowForm(false);
-      setFormData({ name: '', crm: '' });
+      setFormData({ 
+        name: '', 
+        crm: '', 
+        partner_id: currentPartner?.id || '' 
+      });
       alert('Médico cadastrado com sucesso!');
     } catch (error) {
       console.error('Error creating doctor:', error);
@@ -61,6 +90,7 @@ export function DoctorManagement() {
     setFormData({
       name: doctor.name,
       crm: doctor.crm,
+      partner_id: doctor.partner_id,
     });
     setShowForm(true);
   };
@@ -79,6 +109,7 @@ export function DoctorManagement() {
         .update({
           name: formData.name.trim(),
           crm: formData.crm.trim(),
+          partner_id: formData.partner_id,
         })
         .eq('id', editingDoctor.id);
 
@@ -89,10 +120,14 @@ export function DoctorManagement() {
       }
 
       console.log('✅ Médico atualizado com sucesso');
-      await loadDoctors();
+      await loadData();
       setShowForm(false);
       setEditingDoctor(null);
-      setFormData({ name: '', crm: '' });
+      setFormData({ 
+        name: '', 
+        crm: '', 
+        partner_id: currentPartner?.id || '' 
+      });
       alert('Médico atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating doctor:', error);
@@ -124,7 +159,7 @@ export function DoctorManagement() {
       }
 
       console.log('✅ Médico excluído com sucesso');
-      await loadDoctors();
+      await loadData();
       alert('Médico excluído com sucesso!');
     } catch (error) {
       console.error('Error deleting doctor:', error);
@@ -137,7 +172,11 @@ export function DoctorManagement() {
   const resetForm = () => {
     setShowForm(false);
     setEditingDoctor(null);
-    setFormData({ name: '', crm: '' });
+    setFormData({ 
+      name: '', 
+      crm: '', 
+      partner_id: currentPartner?.id || '' 
+    });
   };
 
   return (
@@ -180,6 +219,24 @@ export function DoctorManagement() {
                 placeholder="Ex: CRM/SP 123456"
               />
             </div>
+            {user?.profile === 'admin' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
+                <select
+                  required
+                  value={formData.partner_id}
+                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Selecione um parceiro</option>
+                  {partners.map((partner) => (
+                    <option key={partner.id} value={partner.id}>
+                      {partner.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="md:col-span-2 flex space-x-3">
               <button
                 type="submit"
@@ -210,6 +267,11 @@ export function DoctorManagement() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 CRM
               </th>
+              {user?.profile === 'admin' && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Parceiro
+                </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cadastrado em
               </th>
@@ -227,6 +289,11 @@ export function DoctorManagement() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {doctor.crm}
                 </td>
+                {user?.profile === 'admin' && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {doctor.partners?.name || 'N/A'}
+                  </td>
+                )}
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(doctor.created_at).toLocaleDateString('pt-BR')}
                 </td>

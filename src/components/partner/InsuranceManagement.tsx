@@ -1,29 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
-import { supabase, Insurance } from '../../lib/supabase';
+import { supabase, Insurance, Partner } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function InsuranceManagement() {
   const [insurances, setInsurances] = useState<Insurance[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingInsurance, setEditingInsurance] = useState<Insurance | null>(null);
-  const [insuranceName, setInsuranceName] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    partner_id: '',
+  });
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadInsurances();
+    loadData();
   }, []);
 
-  const loadInsurances = async () => {
+  const loadData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('insurances')
+      // Carregar parceiros
+      const { data: partnersData, error: partnersError } = await supabase
+        .from('partners')
         .select('*')
+        .order('name');
+
+      if (partnersError) throw partnersError;
+      setPartners(partnersData || []);
+
+      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
+      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
+        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
+        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
+      }
+
+      // Carregar convênios
+      const { data: insurancesData, error: insurancesError } = await supabase
+        .from('insurances')
+        .select(`
+          *,
+          partners(name)
+        `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setInsurances(data || []);
+      if (insurancesError) throw insurancesError;
+      setInsurances(insurancesData || []);
     } catch (error) {
-      console.error('Error loading insurances:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -34,16 +60,20 @@ export function InsuranceManagement() {
     setLoading(true);
 
     try {
-      // In a real implementation, you would get the partner_id from the current user
+      console.log('💳 Criando convênio:', formData);
+      
       const { error } = await supabase
         .from('insurances')
-        .insert([{ name: insuranceName, partner_id: 'dummy-partner-id' }]);
+        .insert([formData]);
 
       if (error) throw error;
 
-      await loadInsurances();
+      await loadData();
       setShowForm(false);
-      setInsuranceName('');
+      setFormData({ 
+        name: '', 
+        partner_id: currentPartner?.id || '' 
+      });
       alert('Convênio cadastrado com sucesso!');
     } catch (error) {
       console.error('Error creating insurance:', error);
@@ -55,7 +85,10 @@ export function InsuranceManagement() {
 
   const handleEdit = (insurance: Insurance) => {
     setEditingInsurance(insurance);
-    setInsuranceName(insurance.name);
+    setFormData({
+      name: insurance.name,
+      partner_id: insurance.partner_id,
+    });
     setShowForm(true);
   };
 
@@ -71,7 +104,8 @@ export function InsuranceManagement() {
       const { error } = await supabase
         .from('insurances')
         .update({
-          name: insuranceName.trim(),
+          name: formData.name.trim(),
+          partner_id: formData.partner_id,
         })
         .eq('id', editingInsurance.id);
 
@@ -82,10 +116,13 @@ export function InsuranceManagement() {
       }
 
       console.log('✅ Convênio atualizado com sucesso');
-      await loadInsurances();
+      await loadData();
       setShowForm(false);
       setEditingInsurance(null);
-      setInsuranceName('');
+      setFormData({ 
+        name: '', 
+        partner_id: currentPartner?.id || '' 
+      });
       alert('Convênio atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating insurance:', error);
@@ -117,7 +154,7 @@ export function InsuranceManagement() {
       }
 
       console.log('✅ Convênio excluído com sucesso');
-      await loadInsurances();
+      await loadData();
       alert('Convênio excluído com sucesso!');
     } catch (error) {
       console.error('Error deleting insurance:', error);
@@ -130,7 +167,10 @@ export function InsuranceManagement() {
   const resetForm = () => {
     setShowForm(false);
     setEditingInsurance(null);
-    setInsuranceName('');
+    setFormData({ 
+      name: '', 
+      partner_id: currentPartner?.id || '' 
+    });
   };
 
   return (
@@ -157,12 +197,30 @@ export function InsuranceManagement() {
               <input
                 type="text"
                 required
-                value={insuranceName}
-                onChange={(e) => setInsuranceName(e.target.value)}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Ex: Unimed, Bradesco Saúde"
               />
             </div>
+            {user?.profile === 'admin' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
+                <select
+                  required
+                  value={formData.partner_id}
+                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Selecione um parceiro</option>
+                  {partners.map((partner) => (
+                    <option key={partner.id} value={partner.id}>
+                      {partner.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex items-end space-x-3">
               <button
                 type="submit"
@@ -190,6 +248,11 @@ export function InsuranceManagement() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Nome do Convênio
               </th>
+              {user?.profile === 'admin' && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Parceiro
+                </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cadastrado em
               </th>
@@ -204,6 +267,11 @@ export function InsuranceManagement() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {insurance.name}
                 </td>
+                {user?.profile === 'admin' && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {insurance.partners?.name || 'N/A'}
+                  </td>
+                )}
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(insurance.created_at).toLocaleDateString('pt-BR')}
                 </td>
