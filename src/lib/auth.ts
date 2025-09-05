@@ -1,4 +1,4 @@
-import { supabase, UserProfile } from './supabase';
+import { supabase, supabaseAdmin, UserProfile } from './supabase';
 
 export interface AuthUser {
   id: string;
@@ -9,12 +9,12 @@ export interface AuthUser {
 
 export const authService = {
   async createUser(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    if (!supabase) {
-      return { error: 'Supabase não configurado' };
+    if (!supabase || !supabaseAdmin) {
+      return { error: 'Supabase não configurado corretamente' };
     }
 
     try {
-      console.log('👥 Criando usuário:', { email, name, profile });
+      console.log('👥 Criando usuário com Service Role Key:', { email, name, profile });
       
       const normalizedEmail = email.trim().toLowerCase();
       
@@ -27,7 +27,7 @@ export const authService = {
         return { error: 'Email deve ter formato válido' };
       }
 
-      // Verificar se o usuário já existe na tabela users
+      // Verificar se o usuário já existe na tabela public.users
       const { data: existingUser } = await supabase
         .from('users')
         .select('email')
@@ -38,105 +38,62 @@ export const authService = {
         return { error: 'Este email já está cadastrado' };
       }
 
-      // Tentar criar usuário via admin API primeiro
-      try {
-        console.log('🔄 Tentando criar via admin API...');
-        
-        const { data: adminData, error: adminError } = await supabase.auth.admin.createUser({
-          email: normalizedEmail,
-          password: 'nb@123',
-          email_confirm: true,
-          user_metadata: { name, profile }
-        });
-
-        if (!adminError && adminData?.user) {
-          console.log('✅ Usuário criado via admin API:', adminData.user.id);
-          
-          // Inserir na tabela users
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert({
-              id: adminData.user.id,
-              email: normalizedEmail,
-              name: name.trim(),
-              profile,
-            });
-            
-          if (insertError) {
-            console.error('❌ Erro ao inserir na tabela users:', insertError);
-            return { error: 'Erro ao criar perfil do usuário' };
-          }
-          
-          console.log('✅ Perfil criado na tabela users');
-          return { error: null };
-        }
-      } catch (adminError) {
-        console.warn('⚠️ Admin API não disponível, tentando método alternativo...');
-      }
-
-      // Método alternativo: signUp
-      console.log('🔄 Tentando criar via signUp...');
-      
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      // 1. Criar usuário no auth.users usando Service Role Key
+      console.log('🔐 Criando usuário no auth.users...');
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: normalizedEmail,
         password: 'nb@123',
-        options: {
-          data: { name, profile }
+        email_confirm: true,
+        user_metadata: { 
+          name: name.trim(), 
+          profile 
         }
       });
 
-      if (signUpError) {
-        console.error('❌ Erro no signUp:', signUpError);
+      if (authError) {
+        console.error('❌ Erro ao criar usuário no auth:', authError);
         
-        if (signUpError.message?.includes('User already registered')) {
-          return { error: 'Este email já está cadastrado' };
+        if (authError.message?.includes('User already registered')) {
+          return { error: 'Este email já está cadastrado no sistema de autenticação' };
         }
         
-        return { error: signUpError.message };
+        return { error: `Erro na criação: ${authError.message}` };
       }
 
-      if (signUpData?.user) {
-        console.log('✅ Usuário criado via signUp:', signUpData.user.id);
+      if (!authUser?.user) {
+        return { error: 'Erro: usuário não foi criado no sistema de autenticação' };
+      }
+
+      console.log('✅ Usuário criado no auth.users:', authUser.user.id);
+
+      // 2. Inserir na tabela public.users com o mesmo ID
+      console.log('📝 Inserindo dados na tabela public.users...');
+      const { error: insertError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          id: authUser.user.id,
+          email: normalizedEmail,
+          name: name.trim(),
+          profile,
+        });
         
-        // Aguardar um pouco para garantir que o usuário foi criado
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      if (insertError) {
+        console.error('❌ Erro ao inserir na tabela users:', insertError);
         
-        // Inserir na tabela users
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: signUpData.user.id,
-            email: normalizedEmail,
-            name: name.trim(),
-            profile,
-          });
-          
-        if (insertError) {
-          console.error('❌ Erro ao inserir na tabela users:', insertError);
-          
-          // Tentar novamente após um delay
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          const { error: retryError } = await supabase
-            .from('users')
-            .insert({
-              id: signUpData.user.id,
-              email: normalizedEmail,
-              name: name.trim(),
-              profile,
-            });
-            
-          if (retryError) {
-            console.error('❌ Erro na segunda tentativa:', retryError);
-            return { error: 'Erro ao criar perfil do usuário' };
-          }
+        // Se falhou ao inserir na tabela, tentar remover o usuário do auth
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
+          console.log('🧹 Usuário removido do auth devido ao erro na tabela');
+        } catch (cleanupError) {
+          console.error('❌ Erro ao limpar usuário do auth:', cleanupError);
         }
         
-        console.log('✅ Perfil criado na tabela users');
-        return { error: null };
+        return { error: `Erro ao criar perfil: ${insertError.message}` };
       }
       
-      return { error: 'Erro desconhecido ao criar usuário' };
+      console.log('✅ Dados inseridos na tabela public.users');
+      return { error: null };
+      
     } catch (error) {
       console.error('❌ Erro interno na criação do usuário:', error);
       return { error: 'Erro interno do sistema' };
