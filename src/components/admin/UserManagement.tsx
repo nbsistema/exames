@@ -46,23 +46,22 @@ export function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validar dados antes de enviar
+    if (!formData.email.trim() || !formData.name.trim()) {
+      alert('Email e nome são obrigatórios');
+      return;
+    }
+    
+    if (!formData.email.includes('@')) {
+      alert('Email deve ter formato válido');
+      return;
+    }
+    
     setLoading(true);
 
     try {
       console.log('👥 Criando novo usuário:', formData);
-      
-      // Validar dados antes de enviar
-      if (!formData.email.trim() || !formData.name.trim()) {
-        alert('Email e nome são obrigatórios');
-        setLoading(false);
-        return;
-      }
-      
-      if (!formData.email.includes('@')) {
-        alert('Email deve ter formato válido');
-        setLoading(false);
-        return;
-      }
       
       const { error } = await createUser(
         formData.email,
@@ -79,7 +78,7 @@ export function UserManagement() {
       console.log('✅ Usuário criado com sucesso');
       
       // Aguardar um pouco antes de recarregar a lista
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       await loadUsers();
       setShowForm(false);

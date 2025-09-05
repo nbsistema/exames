@@ -25,9 +25,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
+  // Função para buscar dados do usuário da tabela users
+  const fetchUserData = useCallback(async (authUser: any): Promise<AuthUser | null> => {
+    if (!authUser || !supabase) return null;
+
+    try {
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar dados do usuário na tabela:', error);
+        // Retornar dados básicos se não conseguir buscar da tabela
+        return {
+          id: authUser.id,
+          email: authUser.email || '',
+          name: authUser.user_metadata?.name || 'Usuário',
+          profile: authUser.user_metadata?.profile || 'admin',
+        };
+      }
+
+      return {
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        profile: userData.profile,
+      };
+    } catch (error) {
+      console.warn('⚠️ Erro ao buscar dados do usuário:', error);
+      return {
+        id: authUser.id,
+        email: authUser.email || '',
+        name: authUser.user_metadata?.name || 'Usuário',
+        profile: authUser.user_metadata?.profile || 'admin',
+      };
+    }
+  }, []);
+
+  // Função para verificar usuário atual
   const checkUser = useCallback(async () => {
-    if (!supabase || initialized) return;
-    
+    if (!supabase) {
+      console.warn('⚠️ Supabase não configurado');
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
+
     try {
       console.log('🔍 Verificando usuário atual...');
       
@@ -41,41 +86,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (authUser) {
         console.log('✅ Usuário autenticado encontrado:', authUser.id);
-        
-        try {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authUser.id)
-            .single();
-            
-          if (userError) {
-            console.warn('⚠️ Erro ao buscar dados do usuário:', userError);
-            // Usar dados básicos se não conseguir buscar da tabela
-            setUser({
-              id: authUser.id,
-              email: authUser.email || '',
-              name: authUser.user_metadata?.name || 'Usuário',
-              profile: 'admin',
-            });
-          } else if (userData) {
-            console.log('✅ Dados do usuário carregados:', userData.name);
-            setUser({
-              id: userData.id,
-              email: userData.email,
-              name: userData.name,
-              profile: userData.profile,
-            });
-          }
-        } catch (userError) {
-          console.warn('⚠️ Erro ao buscar dados do usuário:', userError);
-          setUser({
-            id: authUser.id,
-            email: authUser.email || '',
-            name: authUser.user_metadata?.name || 'Usuário',
-            profile: 'admin',
-          });
-        }
+        const userData = await fetchUserData(authUser);
+        setUser(userData);
       } else {
         console.log('ℹ️ Nenhum usuário autenticado');
         setUser(null);
@@ -84,65 +96,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('❌ Erro na verificação do usuário:', error);
       setUser(null);
     } finally {
-      setInitialized(true);
       setLoading(false);
+      setInitialized(true);
     }
-  }, [initialized]);
+  }, [fetchUserData]);
 
   useEffect(() => {
-    if (!supabase) {
-      console.error('❌ Supabase não configurado');
-      setLoading(false);
-      return;
-    }
+    if (initialized) return;
 
     checkUser();
+
+    if (!supabase) return;
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔄 Auth state changed:', event);
       
-      if (event === 'SIGNED_IN' && session?.user) {
-        try {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (userData) {
-            setUser({
-              id: userData.id,
-              email: userData.email,
-              name: userData.name,
-              profile: userData.profile,
-            });
-          } else {
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || 'Usuário',
-              profile: 'admin',
-            });
-          }
-        } catch (error) {
-          console.warn('⚠️ Erro ao buscar dados do usuário no auth change');
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || 'Usuário',
-            profile: 'admin',
-          });
+      try {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const userData = await fetchUserData(session.user);
+          setUser(userData);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          // Manter usuário logado quando token é renovado
+          const userData = await fetchUserData(session.user);
+          setUser(userData);
         }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
+      } catch (error) {
+        console.error('❌ Erro no auth state change:', error);
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
       }
       
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [checkUser]);
+  }, [checkUser, fetchUserData, initialized]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) {
@@ -164,12 +156,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!normalizedEmail.includes('@')) {
         return { error: 'Email deve ter formato válido' };
       }
-      
-      // Limpar sessão anterior
-      await supabase.auth.signOut();
-      
-      // Aguardar um pouco para garantir que a sessão foi limpa
-      await new Promise(resolve => setTimeout(resolve, 500));
       
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,

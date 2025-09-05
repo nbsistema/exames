@@ -28,17 +28,13 @@ const cleanUrl = supabaseUrl?.trim().replace(/\/$/, '') || '';
 const cleanKey = supabaseAnonKey?.trim() || '';
 
 // Criar cliente Supabase apenas se as variáveis estiverem disponíveis
-// Criar cliente Supabase apenas se as variáveis estiverem disponíveis
 export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
     debug: import.meta.env.DEV,
-    storage: window.localStorage,
-    storageKey: 'supabase.auth.token',
-    // Desabilitar confirmação de email por padrão
-    autoConfirmUser: true
+    storage: window.localStorage
   },
   global: {
     headers: {
