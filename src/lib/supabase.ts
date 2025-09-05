@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import './env-validator'; // Importar validador automaticamente
 
+// Verificar se as variáveis de ambiente existem antes de criar o cliente
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -8,22 +9,25 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Missing Supabase environment variables');
   console.error('VITE_SUPABASE_URL:', supabaseUrl);
   console.error('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Present' : 'Missing');
-  throw new Error('❌ Missing Supabase environment variables');
+  console.warn('⚠️ Supabase não configurado - usando modo fallback');
 }
 
 // Validar formato da URL
-try {
-  new URL(supabaseUrl);
-} catch (error) {
-  console.error('❌ Invalid Supabase URL format:', supabaseUrl);
-  throw new Error('❌ Invalid Supabase URL format');
+if (supabaseUrl) {
+  try {
+    new URL(supabaseUrl);
+  } catch (error) {
+    console.error('❌ Invalid Supabase URL format:', supabaseUrl);
+    console.warn('⚠️ URL inválida - usando modo fallback');
+  }
 }
 
 // Limpar URL para evitar problemas de formatação
-const cleanUrl = supabaseUrl.trim().replace(/\/$/, '');
-const cleanKey = supabaseAnonKey.trim();
+const cleanUrl = supabaseUrl?.trim().replace(/\/$/, '') || '';
+const cleanKey = supabaseAnonKey?.trim() || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Criar cliente Supabase apenas se as variáveis estiverem disponíveis
+export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -42,25 +46,29 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   db: {
     schema: 'public',
   },
-});
+}) : null;
 
 // Debug logs
 if (import.meta.env.DEV) {
   console.log('🔗 Supabase URL:', supabaseUrl);
   console.log('🔑 Supabase anon key (início):', supabaseAnonKey?.slice(0, 20) + '...');
   
-  // Testar conexão básica sem depender de tabelas específicas
-  supabase.auth.getSession()
-    .then(({ error }) => {
-      if (error) {
-        console.error('❌ Erro de conexão com Supabase Auth:', error);
-      } else {
-        console.log('✅ Conexão com Supabase Auth estabelecida');
-      }
-    })
-    .catch(() => {
-      console.warn('⚠️ Não foi possível testar a conexão com Supabase');
-    });
+  // Testar conexão apenas se o cliente foi criado
+  if (supabase) {
+    supabase.auth.getSession()
+      .then(({ error }) => {
+        if (error) {
+          console.error('❌ Erro de conexão com Supabase Auth:', error);
+        } else {
+          console.log('✅ Conexão com Supabase Auth estabelecida');
+        }
+      })
+      .catch(() => {
+        console.warn('⚠️ Não foi possível testar a conexão com Supabase');
+      });
+  } else {
+    console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
+  }
 }
 
 // Tipos auxiliares

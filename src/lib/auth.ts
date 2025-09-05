@@ -1,4 +1,5 @@
 import { supabase, UserProfile, AppUser } from './supabase';
+import { createClient } from '@supabase/supabase-js';
 
 export interface AuthUser {
   id: string;
