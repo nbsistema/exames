@@ -8,20 +8,14 @@ import { ResetPassword } from './components/ResetPassword';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    console.log('🚀 App montando...');
-    setMounted(true);
-  }, []);
+    console.log('👤 Estado do usuário mudou:', { user: user?.email, loading });
+  }, [user, loading]);
 
-  useEffect(() => {
-    console.log('👤 Estado do usuário mudou:', { user: user?.email, loading, mounted });
-  }, [user, loading, mounted]);
-
-  // Mostrar loading enquanto não montou ou está carregando
-  if (!mounted || loading) {
-    console.log('⏳ Mostrando loading...', { mounted, loading });
+  // Mostrar loading enquanto está carregando
+  if (loading) {
+    console.log('⏳ Mostrando loading...', { loading });
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
