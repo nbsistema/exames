@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { supabase, AppUser, UserProfile } from '../../lib/supabase';
-import { authService } from '../../lib/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function UserManagement() {
+  const { createUser } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -40,7 +41,7 @@ export function UserManagement() {
 
     try {
       console.log('👥 Criando novo usuário:', formData);
-      const { error } = await authService.createUser(
+      const { error } = await createUser(
         formData.email,
         formData.name.trim(),
         formData.profile

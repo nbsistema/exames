@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, UserProfile } from '../lib/supabase';
+import { authService } from '../lib/auth';
 
 export interface AuthUser {
   id: string;
@@ -14,6 +15,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  createUser: (email: string, name: string, profile: UserProfile) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -249,12 +251,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const createUser = useCallback(async (email: string, name: string, profile: UserProfile) => {
+    return await authService.createUser(email, name, profile);
+  }, []);
+
   const value = {
     user,
     loading,
     signIn,
     signOut,
     resetPassword,
+    createUser,
   };
 
   return (
