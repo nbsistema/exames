@@ -1,3 +1,4 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, UserProfile, AppUser } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 
@@ -685,3 +686,138 @@ export const authService = {
     }
   },
 };
+
+// React Context
+interface AuthContextType {
+  user: AuthUser | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
+  createUser: (email: string, name: string, profile: UserProfile) => Promise<{ error: string | null }>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const checkUser = useCallback(async () => {
+    try {
+      console.log('🔍 Inicializando autenticação...');
+      const currentUser = await authService.getCurrentUser();
+      setUser(currentUser);
+    } catch (error) {
+      console.error('❌ Erro na inicialização da autenticação:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        try {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          if (userData) {
+            setUser({
+              id: userData.id,
+              email: userData.email,
+              name: userData.name,
+              profile: userData.profile,
+            });
+          } else {
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata?.name || 'Admin',
+              profile: 'admin',
+            });
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao buscar dados do usuário no auth change');
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || 'Admin',
+            profile: 'admin',
+          });
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [checkUser]);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const result = await authService.signIn(email, password);
+      if (result.user) {
+        setUser(result.user);
+      }
+      return { error: result.error };
+    } catch (error) {
+      console.error('❌ Erro no signIn:', error);
+      return { error: 'Erro interno do sistema' };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    setLoading(true);
+    try {
+      await authService.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('❌ Erro no signOut:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    return await authService.resetPassword(email);
+  }, []);
+
+  const createUser = useCallback(async (email: string, name: string, profile: UserProfile) => {
+    return await authService.createUser(email, name, profile);
+  }, []);
+
+  const value = {
+    user,
+    loading,
+    signIn,
+    signOut,
+    resetPassword,
+    createUser,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
