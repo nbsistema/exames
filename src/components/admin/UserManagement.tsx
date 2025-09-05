@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { supabase, AppUser, UserProfile } from '../../lib/supabase';
 import { authService } from '../../lib/auth';
 
@@ -7,6 +7,7 @@ export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -64,6 +65,91 @@ export function UserManagement() {
     }
   };
 
+  const handleEdit = (user: AppUser) => {
+    setEditingUser(user);
+    setFormData({
+      name: user.name,
+      email: user.email,
+      profile: user.profile,
+    });
+    setShowForm(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    setLoading(true);
+
+    try {
+      console.log('✏️ Atualizando usuário:', editingUser.id, formData);
+      
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: formData.name.trim(),
+          profile: formData.profile,
+        })
+        .eq('id', editingUser.id);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar usuário:', error);
+        alert(`Erro ao atualizar usuário: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Usuário atualizado com sucesso');
+      await loadUsers();
+      setShowForm(false);
+      setEditingUser(null);
+      setFormData({ name: '', email: '', profile: 'parceiro' });
+      alert('Usuário atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert('Erro ao atualizar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (userId: string, userName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o usuário "${userName}"?`)) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🗑️ Excluindo usuário:', userId);
+      
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        console.error('❌ Erro ao excluir usuário:', error);
+        alert(`Erro ao excluir usuário: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Usuário excluído com sucesso');
+      await loadUsers();
+      alert('Usuário excluído com sucesso!');
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Erro ao excluir usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingUser(null);
+    setFormData({ name: '', email: '', profile: 'parceiro' });
+  };
+
   const profileLabels = {
     admin: 'Administrador',
     parceiro: 'Parceiro',
@@ -94,8 +180,10 @@ export function UserManagement() {
 
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cadastrar Novo Usuário</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {editingUser ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
+          </h3>
+          <form onSubmit={editingUser ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
               <input
@@ -110,11 +198,15 @@ export function UserManagement() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
                 type="email"
-                required
+                required={!editingUser}
+                disabled={!!editingUser}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${editingUser ? 'bg-gray-100' : ''}`}
               />
+              {editingUser && (
+                <p className="text-xs text-gray-500 mt-1">Email não pode ser alterado</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
@@ -135,20 +227,22 @@ export function UserManagement() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {loading ? 'Criando...' : 'Criar Usuário'}
+                {loading ? (editingUser ? 'Atualizando...' : 'Criando...') : (editingUser ? 'Atualizar Usuário' : 'Criar Usuário')}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancelar
               </button>
             </div>
           </form>
-          <p className="text-sm text-gray-500 mt-2">
-            Senha padrão: <code className="bg-gray-100 px-1 rounded">nb@123</code> - O usuário pode fazer login imediatamente.
-          </p>
+          {!editingUser && (
+            <p className="text-sm text-gray-500 mt-2">
+              Senha padrão: <code className="bg-gray-100 px-1 rounded">nb@123</code> - O usuário pode fazer login imediatamente.
+            </p>
+          )}
         </div>
       )}
 
@@ -167,6 +261,9 @@ export function UserManagement() {
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Criado em
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ações
               </th>
             </tr>
           </thead>
@@ -190,7 +287,25 @@ export function UserManagement() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {format(new Date(user.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                  {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(user)}
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Editar usuário"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(user.id, user.name)}
+                      className="text-red-600 hover:text-red-800 transition-colors"
+                      title="Excluir usuário"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { supabase, Partner } from '../../lib/supabase';
 
 export function PartnerManagement() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     company_type: '',
@@ -54,6 +55,90 @@ export function PartnerManagement() {
     }
   };
 
+  const handleEdit = (partner: Partner) => {
+    setEditingPartner(partner);
+    setFormData({
+      name: partner.name,
+      company_type: partner.company_type,
+    });
+    setShowForm(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner) return;
+    
+    setLoading(true);
+
+    try {
+      console.log('✏️ Atualizando parceiro:', editingPartner.id, formData);
+      
+      const { error } = await supabase
+        .from('partners')
+        .update({
+          name: formData.name.trim(),
+          company_type: formData.company_type.trim(),
+        })
+        .eq('id', editingPartner.id);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar parceiro:', error);
+        alert(`Erro ao atualizar parceiro: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Parceiro atualizado com sucesso');
+      await loadPartners();
+      setShowForm(false);
+      setEditingPartner(null);
+      setFormData({ name: '', company_type: '' });
+      alert('Parceiro atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating partner:', error);
+      alert('Erro ao atualizar parceiro');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (partnerId: string, partnerName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o parceiro "${partnerName}"? Isso também excluirá todos os médicos e convênios associados.`)) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🗑️ Excluindo parceiro:', partnerId);
+      
+      const { error } = await supabase
+        .from('partners')
+        .delete()
+        .eq('id', partnerId);
+
+      if (error) {
+        console.error('❌ Erro ao excluir parceiro:', error);
+        alert(`Erro ao excluir parceiro: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Parceiro excluído com sucesso');
+      await loadPartners();
+      alert('Parceiro excluído com sucesso!');
+    } catch (error) {
+      console.error('Error deleting partner:', error);
+      alert('Erro ao excluir parceiro');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingPartner(null);
+    setFormData({ name: '', company_type: '' });
+  };
+
   if (loading && partners.length === 0) {
     return (
       <div className="flex justify-center py-12">
@@ -77,8 +162,10 @@ export function PartnerManagement() {
 
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cadastrar Novo Parceiro</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {editingPartner ? 'Editar Parceiro' : 'Cadastrar Novo Parceiro'}
+          </h3>
+          <form onSubmit={editingPartner ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa</label>
               <input
@@ -106,11 +193,11 @@ export function PartnerManagement() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {loading ? 'Criando...' : 'Criar Parceiro'}
+                {loading ? (editingPartner ? 'Atualizando...' : 'Criando...') : (editingPartner ? 'Atualizar Parceiro' : 'Criar Parceiro')}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancelar
@@ -133,6 +220,9 @@ export function PartnerManagement() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Criado em
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -146,6 +236,24 @@ export function PartnerManagement() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(partner.created_at).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(partner)}
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Editar parceiro"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(partner.id, partner.name)}
+                      className="text-red-600 hover:text-red-800 transition-colors"
+                      title="Excluir parceiro"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

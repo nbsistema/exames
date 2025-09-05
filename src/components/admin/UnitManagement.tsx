@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { supabase, Unit } from '../../lib/supabase';
 
 export function UnitManagement() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
   const [unitName, setUnitName] = useState('');
 
   useEffect(() => {
@@ -51,6 +52,86 @@ export function UnitManagement() {
     }
   };
 
+  const handleEdit = (unit: Unit) => {
+    setEditingUnit(unit);
+    setUnitName(unit.name);
+    setShowForm(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUnit) return;
+    
+    setLoading(true);
+
+    try {
+      console.log('✏️ Atualizando unidade:', editingUnit.id, unitName);
+      
+      const { error } = await supabase
+        .from('units')
+        .update({
+          name: unitName.trim(),
+        })
+        .eq('id', editingUnit.id);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar unidade:', error);
+        alert(`Erro ao atualizar unidade: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Unidade atualizada com sucesso');
+      await loadUnits();
+      setShowForm(false);
+      setEditingUnit(null);
+      setUnitName('');
+      alert('Unidade atualizada com sucesso!');
+    } catch (error) {
+      console.error('Error updating unit:', error);
+      alert('Erro ao atualizar unidade');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (unitId: string, unitName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir a unidade "${unitName}"?`)) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🗑️ Excluindo unidade:', unitId);
+      
+      const { error } = await supabase
+        .from('units')
+        .delete()
+        .eq('id', unitId);
+
+      if (error) {
+        console.error('❌ Erro ao excluir unidade:', error);
+        alert(`Erro ao excluir unidade: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Unidade excluída com sucesso');
+      await loadUnits();
+      alert('Unidade excluída com sucesso!');
+    } catch (error) {
+      console.error('Error deleting unit:', error);
+      alert('Erro ao excluir unidade');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingUnit(null);
+    setUnitName('');
+  };
+
   if (loading && units.length === 0) {
     return (
       <div className="flex justify-center py-12">
@@ -74,8 +155,10 @@ export function UnitManagement() {
 
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cadastrar Nova Unidade</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {editingUnit ? 'Editar Unidade' : 'Cadastrar Nova Unidade'}
+          </h3>
+          <form onSubmit={editingUnit ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Unidade</label>
               <input
@@ -93,11 +176,11 @@ export function UnitManagement() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {loading ? 'Criando...' : 'Criar Unidade'}
+                {loading ? (editingUnit ? 'Atualizando...' : 'Criando...') : (editingUnit ? 'Atualizar Unidade' : 'Criar Unidade')}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancelar
@@ -117,6 +200,9 @@ export function UnitManagement() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Criado em
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -127,6 +213,24 @@ export function UnitManagement() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(unit.created_at).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(unit)}
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Editar unidade"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(unit.id, unit.name)}
+                      className="text-red-600 hover:text-red-800 transition-colors"
+                      title="Excluir unidade"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

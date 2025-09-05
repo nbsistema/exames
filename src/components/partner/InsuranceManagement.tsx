@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X } from 'lucide-react';
 import { supabase, Insurance } from '../../lib/supabase';
 
 export function InsuranceManagement() {
   const [insurances, setInsurances] = useState<Insurance[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingInsurance, setEditingInsurance] = useState<Insurance | null>(null);
   const [insuranceName, setInsuranceName] = useState('');
 
   useEffect(() => {
@@ -52,6 +53,86 @@ export function InsuranceManagement() {
     }
   };
 
+  const handleEdit = (insurance: Insurance) => {
+    setEditingInsurance(insurance);
+    setInsuranceName(insurance.name);
+    setShowForm(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInsurance) return;
+    
+    setLoading(true);
+
+    try {
+      console.log('✏️ Atualizando convênio:', editingInsurance.id, insuranceName);
+      
+      const { error } = await supabase
+        .from('insurances')
+        .update({
+          name: insuranceName.trim(),
+        })
+        .eq('id', editingInsurance.id);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar convênio:', error);
+        alert(`Erro ao atualizar convênio: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Convênio atualizado com sucesso');
+      await loadInsurances();
+      setShowForm(false);
+      setEditingInsurance(null);
+      setInsuranceName('');
+      alert('Convênio atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating insurance:', error);
+      alert('Erro ao atualizar convênio');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (insuranceId: string, insuranceName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o convênio "${insuranceName}"?`)) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🗑️ Excluindo convênio:', insuranceId);
+      
+      const { error } = await supabase
+        .from('insurances')
+        .delete()
+        .eq('id', insuranceId);
+
+      if (error) {
+        console.error('❌ Erro ao excluir convênio:', error);
+        alert(`Erro ao excluir convênio: ${error.message}`);
+        return;
+      }
+
+      console.log('✅ Convênio excluído com sucesso');
+      await loadInsurances();
+      alert('Convênio excluído com sucesso!');
+    } catch (error) {
+      console.error('Error deleting insurance:', error);
+      alert('Erro ao excluir convênio');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingInsurance(null);
+    setInsuranceName('');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -67,8 +148,10 @@ export function InsuranceManagement() {
 
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Cadastrar Novo Convênio</h3>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {editingInsurance ? 'Editar Convênio' : 'Cadastrar Novo Convênio'}
+          </h3>
+          <form onSubmit={editingInsurance ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Convênio</label>
               <input
@@ -86,11 +169,11 @@ export function InsuranceManagement() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {loading ? 'Cadastrando...' : 'Cadastrar'}
+                {loading ? (editingInsurance ? 'Atualizando...' : 'Cadastrando...') : (editingInsurance ? 'Atualizar Convênio' : 'Cadastrar Convênio')}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancelar
@@ -110,6 +193,9 @@ export function InsuranceManagement() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cadastrado em
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -120,6 +206,24 @@ export function InsuranceManagement() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(insurance.created_at).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(insurance)}
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Editar convênio"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(insurance.id, insurance.name)}
+                      className="text-red-600 hover:text-red-800 transition-colors"
+                      title="Excluir convênio"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
