@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Eye, Edit } from 'lucide-react';
-import { supabase, ExamRequest, Doctor, Insurance } from '../../lib/supabase';
+import { supabase, ExamRequest, Doctor, Insurance, Partner } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function ExamManagement() {
   const [examRequests, setExamRequests] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [insurances, setInsurances] = useState<Insurance[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedExam, setSelectedExam] = useState<any>(null);
@@ -19,7 +22,9 @@ export function ExamManagement() {
     exam_type: '',
     payment_type: 'particular' as 'particular' | 'convenio',
     insurance_id: '',
+    partner_id: '',
   });
+  const { user } = useAuth();
 
   useEffect(() => {
     loadData();
@@ -27,13 +32,29 @@ export function ExamManagement() {
 
   const loadData = async () => {
     try {
+      // Carregar parceiros
+      const { data: partnersData, error: partnersError } = await supabase
+        .from('partners')
+        .select('*')
+        .order('name');
+
+      if (partnersError) throw partnersError;
+      setPartners(partnersData || []);
+
+      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
+      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
+        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
+        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
+      }
+
       const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
         supabase
           .from('exam_requests')
           .select(`
             *,
             doctors(name),
-            insurances(name)
+            insurances(name),
+            partners(name)
           `)
           .order('created_at', { ascending: false }),
         supabase.from('doctors').select('*').order('name'),
@@ -61,9 +82,10 @@ export function ExamManagement() {
     try {
       const examData = {
         ...formData,
-        partner_id: 'dummy-partner-id', // In real implementation, get from current user
         insurance_id: formData.payment_type === 'convenio' ? formData.insurance_id : null,
       };
+
+      console.log('🏥 Criando encaminhamento de exame:', examData);
 
       const { error } = await supabase
         .from('exam_requests')
@@ -81,6 +103,7 @@ export function ExamManagement() {
         exam_type: '',
         payment_type: 'particular',
         insurance_id: '',
+        partner_id: currentPartner?.id || '',
       });
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
@@ -215,6 +238,24 @@ export function ExamManagement() {
                 placeholder="Ex: Raio-X, Ultrassom"
               />
             </div>
+            {user?.profile === 'admin' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
+                <select
+                  required
+                  value={formData.partner_id}
+                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Selecione um parceiro</option>
+                  {partners.map((partner) => (
+                    <option key={partner.id} value={partner.id}>
+                      {partner.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Pagamento</label>
               <select
@@ -326,6 +367,11 @@ export function ExamManagement() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Tipo
                 </th>
+                {user?.profile === 'admin' && (
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Parceiro
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Ações
                 </th>
@@ -357,6 +403,11 @@ export function ExamManagement() {
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`}
                   </td>
+                  {user?.profile === 'admin' && (
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {exam.partners?.name || 'N/A'}
+                    </td>
+                  )}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
                       {exam.status === 'encaminhado' && (
