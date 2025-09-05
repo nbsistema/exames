@@ -21,8 +21,6 @@ if (supabaseUrl) {
     console.error('❌ Invalid Supabase URL format:', supabaseUrl);
     console.warn('⚠️ URL inválida - usando modo fallback');
   }
-    console.warn('⚠️ URL inválida - usando modo fallback');
-  }
 }
 
 // Limpar URL para evitar problemas de formatação
@@ -69,10 +67,6 @@ if (import.meta.env.DEV) {
       })
       .catch(() => {
         console.warn('⚠️ Não foi possível testar a conexão com Supabase');
-      });
-  } else {
-    console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
-  }
       });
   } else {
     console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
