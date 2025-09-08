@@ -79,14 +79,20 @@ export const envValidator = {
       
       console.log('🔄 Testando conectividade com Supabase...');
       
-      // Teste 1: Requisição básica para a API
+      // Teste 1: Requisição básica para a API com timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+      
       const response = await fetch(`${supabaseUrl}/rest/v1/`, {
         method: 'GET',
         headers: {
           'apikey': supabaseKey,
           'Content-Type': 'application/json'
-        }
+        },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       console.log('📊 Status da resposta:', response.status);
       console.log('📊 Headers da resposta:', Object.fromEntries(response.headers.entries()));
@@ -97,12 +103,12 @@ export const envValidator = {
       } else if (response.status === 401) {
         return {
           success: false,
-          error: 'Chave API inválida ou expirada'
+          error: 'Chave API inválida ou expirada. Verifique VITE_SUPABASE_ANON_KEY no arquivo .env'
         };
       } else if (response.status === 404) {
         return {
           success: false,
-          error: 'URL do projeto Supabase não encontrada'
+          error: 'URL do projeto Supabase não encontrada. Verifique VITE_SUPABASE_URL no arquivo .env'
         };
       } else {
         const errorText = await response.text();
@@ -113,6 +119,21 @@ export const envValidator = {
       }
     } catch (error) {
       console.error('❌ Erro na conexão:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          return {
+            success: false,
+            error: 'Timeout na conexão com Supabase (10s). Verifique sua conexão de internet e as configurações do Supabase.'
+          };
+        } else if (error.message.includes('Failed to fetch')) {
+          return {
+            success: false,
+            error: 'Falha na conexão com Supabase. Verifique se a URL está correta e se o projeto Supabase está ativo.'
+          };
+        }
+      }
+      
       return {
         success: false,
         error: `Erro de rede: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
@@ -130,16 +151,23 @@ if (import.meta.env.DEV) {
     console.log('✅ Todas as variáveis de ambiente estão corretas');
     
     // Testar conexão automaticamente
-    envValidator.testConnection().then(result => {
-      if (result.success) {
-        console.log('✅ Teste de conectividade passou');
-      } else {
-        console.error('❌ Teste de conectividade falhou:', result.error);
-      }
-    });
+    envValidator.testConnection()
+      .then(result => {
+        if (result.success) {
+          console.log('✅ Teste de conectividade passou');
+        } else {
+          console.warn('⚠️ Teste de conectividade falhou:', result.error);
+          console.log('💡 Dica: Verifique se as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY estão corretas no arquivo .env');
+        }
+      })
+      .catch(error => {
+        console.warn('⚠️ Não foi possível executar o teste de conectividade:', error.message);
+        console.log('💡 Isso pode ser normal se você ainda não configurou o Supabase');
+      });
   } else {
     console.error('❌ Problemas encontrados nas variáveis de ambiente:');
     validation.errors.forEach(error => console.error(error));
+    console.log('💡 Consulte o README.md para instruções de configuração');
   }
   console.log('🔍 === FIM DA VALIDAÇÃO ===');
 }
