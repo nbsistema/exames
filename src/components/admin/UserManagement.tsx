@@ -80,7 +80,17 @@ export function UserManagement() {
 
       if (error) {
         console.error('❌ Erro ao criar usuário:', error);
-        alert(`Erro ao criar usuário: ${error}`);
+        
+        // Mostrar erro mais amigável
+        if (error.includes('já está cadastrado')) {
+          alert('Este email já está cadastrado no sistema.');
+        } else if (error.includes('Service Role Key')) {
+          alert('Erro de configuração do sistema. Entre em contato com o administrador.');
+        } else if (error.includes('Database error')) {
+          alert('Erro no banco de dados. Verifique a configuração do Supabase.');
+        } else {
+          alert(`Erro ao criar usuário: ${error}`);
+        }
         return;
       }
 
@@ -95,7 +105,7 @@ export function UserManagement() {
       alert('Usuário criado com sucesso!');
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
-      alert('Erro interno ao criar usuário');
+      alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
     } finally {
       setSubmitting(false);
     }

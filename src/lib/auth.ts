@@ -9,8 +9,13 @@ export interface AuthUser {
 
 export const authService = {
   async createUser(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    if (!supabase || !supabaseAdmin) {
-      return { error: 'Supabase não configurado corretamente' };
+    if (!supabase) {
+      return { error: 'Supabase não configurado' };
+    }
+
+    if (!supabaseAdmin) {
+      console.warn('⚠️ Service Role Key não disponível, tentando método alternativo');
+      return await this.createUserFallback(email, name, profile);
     }
 
     try {
@@ -96,6 +101,102 @@ export const authService = {
       
     } catch (error) {
       console.error('❌ Erro interno na criação do usuário:', error);
+      return { error: 'Erro interno do sistema' };
+    }
+  },
+
+  async createUserFallback(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
+    if (!supabase) {
+      return { error: 'Supabase não configurado' };
+    }
+
+    try {
+      console.log('👥 Criando usuário com método alternativo:', { email, name, profile });
+      
+      const normalizedEmail = email.trim().toLowerCase();
+      
+      // Validações
+      if (!normalizedEmail || !name.trim() || !profile) {
+        return { error: 'Todos os campos são obrigatórios' };
+      }
+      
+      if (!normalizedEmail.includes('@')) {
+        return { error: 'Email deve ter formato válido' };
+      }
+
+      // Verificar se o usuário já existe na tabela public.users
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', normalizedEmail)
+        .single();
+
+      if (existingUser) {
+        return { error: 'Este email já está cadastrado' };
+      }
+
+      // Tentar criar usuário usando signUp (método público)
+      console.log('🔐 Criando usuário via signUp...');
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: 'nb@123',
+        options: {
+          data: { 
+            name: name.trim(), 
+            profile 
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('❌ Erro ao criar usuário via signUp:', authError);
+        
+        if (authError.message?.includes('User already registered')) {
+          return { error: 'Este email já está cadastrado no sistema de autenticação' };
+        }
+        
+        return { error: `Erro na criação: ${authError.message}` };
+      }
+
+      if (!authData?.user) {
+        return { error: 'Erro: usuário não foi criado no sistema de autenticação' };
+      }
+
+      console.log('✅ Usuário criado via signUp:', authData.user.id);
+
+      // Aguardar um pouco para garantir sincronização
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Inserir na tabela public.users
+      console.log('📝 Inserindo dados na tabela public.users...');
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: normalizedEmail,
+          name: name.trim(),
+          profile,
+        });
+        
+      if (insertError) {
+        console.error('❌ Erro ao inserir na tabela users:', insertError);
+        
+        // Se falhou ao inserir na tabela, o usuário ainda existe no auth
+        // Não podemos removê-lo sem Service Role Key
+        console.warn('⚠️ Usuário criado no auth mas falhou na tabela users');
+        
+        return { error: `Erro ao criar perfil: ${insertError.message}` };
+      }
+      
+      console.log('✅ Dados inseridos na tabela public.users');
+      
+      // Fazer logout do usuário recém-criado para não interferir na sessão atual
+      await supabase.auth.signOut();
+      
+      return { error: null };
+      
+    } catch (error) {
+      console.error('❌ Erro interno na criação do usuário (fallback):', error);
       return { error: 'Erro interno do sistema' };
     }
   },

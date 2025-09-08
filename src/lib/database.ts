@@ -606,6 +606,11 @@ export const databaseService = {
 
   async ensureTablesExist(): Promise<boolean> {
     try {
+      if (!supabase) {
+        console.warn('⚠️ Supabase não configurado, pulando verificação de tabelas');
+        return false;
+      }
+
       // Testar se a tabela users existe
       const { error } = await supabase.from('users').select('id').limit(1);
       
@@ -615,10 +620,17 @@ export const databaseService = {
         return result.success;
       }
       
+      if (error) {
+        console.warn('⚠️ Erro ao verificar tabelas:', error.message);
+        // Tentar criar tabelas mesmo assim
+        const result = await this.createTables();
+        return result.success;
+      }
+      
       console.log('✅ Tabelas já existem');
       return true;
     } catch (error) {
-      console.warn('⚠️ Não foi possível verificar tabelas, assumindo que não existem');
+      console.warn('⚠️ Não foi possível verificar tabelas:', error);
       const result = await this.createTables();
       return result.success;
     }
