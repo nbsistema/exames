@@ -26,6 +26,7 @@ if (import.meta.env.DEV) {
   (window as any).envValidator = envValidator;
   console.log('🔧 Debug tools disponíveis: window.debugAuth');
   console.log('📋 Comandos disponíveis:');
+  console.log('- debugAuth.forceStopUserFetch() - Para busca infinita de usuário');
   console.log('- debugAuth.testConnection() - Testa conexão com Supabase');
   console.log('- debugAuth.testLogin(email, password) - Testa login específico');
   console.log('- debugAuth.inspectNetworkRequests() - Monitora requisições de rede');

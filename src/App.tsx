@@ -8,53 +8,69 @@ import { ResetPassword } from './components/ResetPassword';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [initialLoad, setInitialLoad] = useState(true);
-  const [maxLoadingTime, setMaxLoadingTime] = useState(false);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
 
   useEffect(() => {
-    console.log('👤 Estado do usuário mudou:', { user: user?.email, loading });
+    console.log('👤 Estado do usuário:', { user: user?.email, loading });
     
-    // Se o usuário foi carregado, marcar como não sendo mais carregamento inicial
-    if (user !== null || !loading) {
-      setInitialLoad(false);
-    }
-  }, [user, loading, initialLoad]);
-  
-  useEffect(() => {
-    // Timeout máximo para carregamento
+    // Timeout de segurança para evitar loading infinito
     const maxTimer = setTimeout(() => {
-      console.warn('⚠️ Timeout máximo de carregamento atingido');
-      setMaxLoadingTime(true);
-      setInitialLoad(false);
-    }, 5000); // 5 segundos máximo
+      if (loading) {
+        console.warn('⚠️ Timeout de carregamento atingido');
+        setShowTimeoutWarning(true);
+      }
+    }, 8000); // 8 segundos máximo
     
     return () => clearTimeout(maxTimer);
-  }, []);
+  }, [loading]);
 
-  // Mostrar loading enquanto está carregando (mas não por mais de 5 segundos)
-  if (loading && initialLoad && !maxLoadingTime) {
-    console.log('⏳ Mostrando loading...', { loading });
+  // Mostrar loading enquanto está carregando
+  if (loading && !showTimeoutWarning) {
+    console.log('⏳ Mostrando loading...');
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Carregando...</p>
-          <p className="text-xs text-gray-500 mt-2">Se demorar muito, recarregue a página</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-          >
-            Recarregar Página
-          </button>
+          <p className="text-xs text-gray-500 mt-2">Aguarde um momento...</p>
         </div>
       </div>
     );
   }
   
-  // Se atingiu o tempo máximo de loading, mostrar erro
-  if (maxLoadingTime && loading) {
-    console.error('❌ Timeout de carregamento - forçando exibição de login');
-    return <LoginForm />;
+  // Se atingiu o timeout, mostrar opções de recovery
+  if (showTimeoutWarning) {
+    console.error('❌ Timeout de carregamento atingido');
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="text-lg font-medium text-red-800 mb-4">Timeout de Carregamento</h3>
+            <p className="text-gray-700 mb-4">
+              O sistema demorou muito para carregar. Isso pode ser um problema temporário.
+            </p>
+            <div className="space-y-2">
+              <button 
+                onClick={() => window.location.reload()} 
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Recarregar Página
+              </button>
+              <button 
+                onClick={() => {
+                  localStorage.clear();
+                  sessionStorage.clear();
+                  window.location.reload();
+                }} 
+                className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Limpar Cache e Recarregar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Se não há usuário, mostrar login

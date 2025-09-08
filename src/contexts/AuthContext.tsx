@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, UserProfile } from '../lib/supabase';
 import { authService } from '../lib/auth';
 import { databaseService } from '../lib/database';
@@ -24,26 +24,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userDataCache, setUserDataCache] = useState<Map<string, AuthUser>>(new Map());
+  const [initialized, setInitialized] = useState(false);
+  
+  // Refs para evitar loops
+  const fetchingUserData = useRef(false);
+  const userDataCache = useRef<Map<string, AuthUser>>(new Map());
+  const initializationPromise = useRef<Promise<void> | null>(null);
 
-  // Função para buscar dados do usuário da tabela users
+  // Função para buscar dados do usuário da tabela users (com proteção contra loops)
   const fetchUserData = useCallback(async (authUser: any): Promise<AuthUser | null> => {
     if (!authUser || !supabase) return null;
 
+    const userId = authUser.id;
+    
+    // Verificar se já está buscando dados para este usuário
+    if (fetchingUserData.current) {
+      console.log('⏳ Já está buscando dados do usuário, aguardando...');
+      return null;
+    }
+
     // Verificar cache primeiro
-    const cachedUser = userDataCache.get(authUser.id);
+    const cachedUser = userDataCache.current.get(userId);
     if (cachedUser) {
       console.log('✅ Usando dados do usuário em cache:', cachedUser.email);
       return cachedUser;
     }
 
+    fetchingUserData.current = true;
+    console.log('🔍 Buscando dados do usuário:', userId);
+
     try {
-      console.log('🔍 Buscando dados do usuário:', authUser.id);
-      
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', authUser.id)
+        .eq('id', userId)
         .single();
 
       if (error) {
@@ -54,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('📝 Usuário não existe na tabela public.users, criando entrada...');
           
           const fallbackUser = {
-            id: authUser.id,
+            id: userId,
             email: authUser.email || '',
             name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
             profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
@@ -77,20 +91,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           
           // Adicionar ao cache
-          setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
+          userDataCache.current.set(userId, fallbackUser);
           return fallbackUser;
         }
         
         // Retornar dados básicos se não conseguir buscar da tabela
         const fallbackUser = {
-          id: authUser.id,
+          id: userId,
           email: authUser.email || '',
           name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
           profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
         };
         
         // Adicionar ao cache
-        setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
+        userDataCache.current.set(userId, fallbackUser);
         return fallbackUser;
       }
 
@@ -103,32 +117,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       
       // Adicionar ao cache
-      setUserDataCache(prev => new Map(prev).set(authUser.id, userResult));
+      userDataCache.current.set(userId, userResult);
       return userResult;
     } catch (error) {
       console.warn('⚠️ Erro ao buscar dados do usuário:', error);
       const fallbackUser = {
-        id: authUser.id,
+        id: userId,
         email: authUser.email || '',
         name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
         profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
       };
       
       // Adicionar ao cache
-      setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
+      userDataCache.current.set(userId, fallbackUser);
       return fallbackUser;
+    } finally {
+      fetchingUserData.current = false;
     }
-  }, [userDataCache]);
+  }, []);
 
-  // Função para verificar usuário atual
-  const checkUser = useCallback(async () => {
-    if (loading === false && user !== null) {
-      console.log('ℹ️ Usuário já carregado, pulando verificação');
+  // Inicialização única
+  const initializeAuth = useCallback(async () => {
+    if (initialized || !supabase) {
       return;
     }
-    
-    console.log('🔍 Verificando usuário atual...', { loading, hasUser: !!user });
-    
+
+    // Evitar múltiplas inicializações simultâneas
+    if (initializationPromise.current) {
+      await initializationPromise.current;
+      return;
+    }
+
+    initializationPromise.current = (async () => {
+      console.log('🔄 Inicializando AuthContext...');
+      
+      try {
+        // Garantir que as tabelas existam
+        await databaseService.ensureTablesExist();
+        
+        // Verificar usuário atual
+        const { data: { user: authUser }, error } = await supabase.auth.getUser();
+        
+        if (error) {
+          console.warn('⚠️ Erro ao verificar usuário:', error);
+          setUser(null);
+        } else if (authUser) {
+          console.log('✅ Usuário autenticado encontrado:', authUser.id);
+          const userData = await fetchUserData(authUser);
+          if (userData) {
+            console.log('👤 Dados do usuário processados:', userData);
+            setUser(userData);
+          }
+        } else {
+          console.log('ℹ️ Nenhum usuário autenticado');
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('❌ Erro na inicialização:', error);
+        setUser(null);
+      } finally {
+        setInitialized(true);
+        setLoading(false);
+      }
+    })();
+
+    await initializationPromise.current;
+  }, [initialized, fetchUserData]);
+
+  useEffect(() => {
     if (!supabase) {
       console.warn('⚠️ Supabase não configurado');
       setUser(null);
@@ -136,62 +192,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    try {
-      const { data: { user: authUser }, error } = await supabase.auth.getUser();
-      
-      if (error) {
-        console.warn('⚠️ Erro ao verificar usuário:', error);
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
-      if (authUser) {
-        console.log('✅ Usuário autenticado encontrado:', authUser.id);
-        const userData = await fetchUserData(authUser);
-        console.log('👤 Dados do usuário processados:', userData);
-        setUser(userData);
-      } else {
-        console.log('ℹ️ Nenhum usuário autenticado');
-        setUser(null);
-      }
-    } catch (error) {
-      console.error('❌ Erro na verificação do usuário:', error);
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchUserData, loading, user]);
-
-  useEffect(() => {
-    console.log('🔄 AuthContext useEffect executando...');
-    
-    // Evitar execução desnecessária
-    if (user !== null && loading === false) {
-      console.log('ℹ️ Usuário já definido, pulando useEffect');
-      return;
-    }
-
-    // Garantir que as tabelas existam antes de verificar usuário
-    const initializeAndCheckUser = async () => {
-      try {
-        // Verificar se as tabelas existem
-        await databaseService.ensureTablesExist();
-        
-        // Aguardar um pouco para evitar loop
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Verificar usuário
-        await checkUser();
-      } catch (error) {
-        console.error('❌ Erro na inicialização:', error);
-        setLoading(false);
-      }
-    };
-    
-    const timeoutId = setTimeout(initializeAndCheckUser, 100);
-
-    if (!supabase) return;
+    // Inicializar apenas uma vez
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -200,30 +202,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         if (event === 'SIGNED_IN' && session?.user) {
           console.log('✅ Usuário logado, buscando dados...');
-          const userData = await fetchUserData(session.user);
-          console.log('👤 Dados obtidos:', userData);
-          setUser(userData);
+          
+          // Evitar buscar dados se já estamos buscando
+          if (!fetchingUserData.current) {
+            const userData = await fetchUserData(session.user);
+            if (userData) {
+              console.log('👤 Dados obtidos:', userData);
+              setUser(userData);
+            }
+          }
           setLoading(false);
         } else if (event === 'SIGNED_OUT') {
           console.log('🚪 Usuário deslogado');
           // Limpar cache ao fazer logout
-          setUserDataCache(new Map());
+          userDataCache.current.clear();
+          fetchingUserData.current = false;
           setUser(null);
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Manter usuário logado quando token é renovado
           console.log('🔄 Token renovado');
           // Só buscar dados se não tiver usuário atual
-          if (!user) {
+          if (!user && !fetchingUserData.current) {
             const userData = await fetchUserData(session.user);
-            setUser(userData);
+            if (userData) {
+              setUser(userData);
+            }
           }
           setLoading(false);
         }
       } catch (error) {
         console.error('❌ Erro no auth state change:', error);
         if (event === 'SIGNED_OUT') {
-          setUserDataCache(new Map());
+          userDataCache.current.clear();
+          fetchingUserData.current = false;
           setUser(null);
         }
         setLoading(false);
@@ -231,10 +243,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
-      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [checkUser, fetchUserData, user, loading]);
+  }, [initializeAuth, fetchUserData, user]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) {
@@ -306,7 +317,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🚪 Fazendo logout...');
       await supabase.auth.signOut();
       // Limpar cache
-      setUserDataCache(new Map());
+      userDataCache.current.clear();
+      fetchingUserData.current = false;
       setUser(null);
       console.log('✅ Logout realizado com sucesso');
     } catch (error) {

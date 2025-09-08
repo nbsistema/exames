@@ -7,33 +7,8 @@ import { CheckupDashboard } from './checkup/CheckupDashboard';
 
 export function Dashboard() {
   const { user, loading } = useAuth();
-  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   console.log('📊 Dashboard renderizando:', { user: user?.email, profile: user?.profile, loading });
-
-  useEffect(() => {
-    // Simular carregamento do dashboard
-    if (user && !loading) {
-      const timer = setTimeout(() => {
-        setDashboardLoading(false);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [user, loading]);
-
-  // Mostrar loading se ainda está carregando
-  if (loading || dashboardLoading) {
-    console.log('⏳ Dashboard em loading');
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Se não há usuário, não renderizar nada (será tratado pelo App.tsx)
   if (!user) {

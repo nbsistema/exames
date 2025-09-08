@@ -2,6 +2,26 @@
 import { supabase } from './supabase';
 
 export const debugAuth = {
+  async forceStopUserFetch(): Promise<void> {
+    console.log('🛑 === FORÇANDO PARADA DE BUSCA DE USUÁRIO ===');
+    
+    // Limpar apenas dados relacionados ao cache de usuário
+    const keysToRemove = Object.keys(localStorage).filter(key => 
+      key.includes('supabase.auth.token') || 
+      key.includes('sb-') ||
+      key.includes('user-cache')
+    );
+    
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log('🗑️ Removido:', key);
+    });
+    
+    // Recarregar página para reinicializar
+    console.log('🔄 Recarregando página...');
+    window.location.reload();
+  },
+
   async clearUserCache(): Promise<void> {
     console.log('🧹 === LIMPEZA DE CACHE DE USUÁRIO ===');
     
