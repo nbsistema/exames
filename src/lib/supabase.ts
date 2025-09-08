@@ -52,6 +52,19 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
   }
 }) : null;
 
+// Criar cliente admin apenas se a service role key estiver disponível
+export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  },
+  global: {
+    headers: {
+      'apikey': supabaseServiceKey.trim()
+    },
+  }
+}) : null;
+
 // Debug logs
 if (import.meta.env.DEV) {
   console.log('🔗 Supabase URL:', supabaseUrl);
