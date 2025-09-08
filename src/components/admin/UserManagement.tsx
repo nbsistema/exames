@@ -84,10 +84,10 @@ export function UserManagement() {
         // Mostrar erro mais amigável
         if (error.includes('já está cadastrado')) {
           alert('Este email já está cadastrado no sistema.');
-        } else if (error.includes('Service Role Key')) {
-          alert('Erro de configuração do sistema. Entre em contato com o administrador.');
-        } else if (error.includes('Database error')) {
-          alert('Erro no banco de dados. Verifique a configuração do Supabase.');
+        } else if (error.includes('Database error') || error.includes('conexão com o banco')) {
+          alert('Erro de conexão com o banco de dados. Verifique:\n1. Se o projeto Supabase está ativo\n2. Se as variáveis de ambiente estão corretas\n3. Se há conectividade com a internet');
+        } else if (error.includes('Supabase não configurado')) {
+          alert('Supabase não está configurado. Verifique o arquivo .env');
         } else {
           alert(`Erro ao criar usuário: ${error}`);
         }

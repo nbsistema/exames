@@ -34,7 +34,8 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
     detectSessionInUrl: true,
     debug: import.meta.env.DEV,
     storage: window.localStorage,
-    flowType: 'pkce'
+    flowType: 'pkce',
+    storageKey: 'nb-auth-token'
   },
   global: {
     headers: {
@@ -55,7 +56,8 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
 export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
-    persistSession: false
+    persistSession: false,
+    storageKey: 'nb-admin-token'
   }
 }) : null;
 
