@@ -86,8 +86,10 @@ export function UserManagement() {
           alert('Este email já está cadastrado no sistema.');
         } else if (error.includes('Database error') || error.includes('conexão com o banco')) {
           alert('Erro de conexão com o banco de dados. Verifique:\n1. Se o projeto Supabase está ativo\n2. Se as variáveis de ambiente estão corretas\n3. Se há conectividade com a internet');
-        } else if (error.includes('Supabase não configurado')) {
-          alert('Supabase não está configurado. Verifique o arquivo .env');
+        } else if (error.includes('Acesso negado')) {
+          alert('Apenas administradores podem criar usuários.');
+        } else if (error.includes('precisa estar logado')) {
+          alert('Você precisa estar logado para criar usuários.');
         } else {
           alert(`Erro ao criar usuário: ${error}`);
         }

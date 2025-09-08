@@ -52,20 +52,10 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
   }
 }) : null;
 
-// Cliente admin com Service Role Key para operações administrativas
-export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-    storageKey: 'nb-admin-token'
-  }
-}) : null;
-
 // Debug logs
 if (import.meta.env.DEV) {
   console.log('🔗 Supabase URL:', supabaseUrl);
   console.log('🔑 Supabase anon key (início):', supabaseAnonKey?.slice(0, 20) + '...');
-  console.log('🔐 Supabase service key presente:', !!supabaseServiceKey);
   
   // Testar conexão apenas se o cliente foi criado
   if (supabase) {

@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin, UserProfile } from './supabase';
+import { supabase, UserProfile } from './supabase';
 
 export interface AuthUser {
   id: string;
@@ -14,7 +14,7 @@ export const authService = {
     }
 
     try {
-      console.log('👥 Criando usuário:', { email, name, profile });
+      console.log('👥 Criando usuário via Edge Function:', { email, name, profile });
       
       const normalizedEmail = email.trim().toLowerCase();
       
@@ -27,171 +27,50 @@ export const authService = {
         return { error: 'Email deve ter formato válido' };
       }
 
-      // Verificar se o usuário já existe na tabela public.users
-      try {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('email')
-          .eq('email', normalizedEmail)
-          .single();
+      // Get current session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        return { error: 'Você precisa estar logado para criar usuários' };
+      }
 
-        if (existingUser) {
-          return { error: 'Este email já está cadastrado' };
+      // Call Edge Function to create user
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: normalizedEmail,
+          name: name.trim(),
+          profile: profile
         }
-      } catch (error) {
-        // Ignorar erro se a tabela não existir ainda
-        console.log('ℹ️ Tabela users pode não existir ainda, continuando...');
+      });
+
+      if (error) {
+        console.error('❌ Erro na Edge Function:', error);
+        return { error: `Erro ao criar usuário: ${error.message}` };
       }
 
-      // Tentar primeiro com Service Role Key se disponível
-      if (supabaseAdmin) {
-        console.log('🔐 Tentando criar usuário com Service Role Key...');
-        return await this.createUserWithAdmin(normalizedEmail, name, profile);
-      } else {
-        console.log('🔐 Service Role Key não disponível, usando método público...');
-        return await this.createUserPublic(normalizedEmail, name, profile);
+      if (data?.error) {
+        console.error('❌ Erro retornado pela função:', data.error);
+        
+        if (data.error.includes('User already registered')) {
+          return { error: 'Este email já está cadastrado' };
+        } else if (data.error.includes('Forbidden')) {
+          return { error: 'Acesso negado - apenas administradores podem criar usuários' };
+        } else if (data.error.includes('Unauthorized')) {
+          return { error: 'Você precisa estar logado para criar usuários' };
+        }
+        
+        return { error: data.error };
       }
+
+      if (data?.success) {
+        console.log('✅ Usuário criado com sucesso via Edge Function');
+        return { error: null };
+      }
+
+      return { error: 'Erro desconhecido ao criar usuário' };
       
     } catch (error) {
       console.error('❌ Erro interno na criação do usuário:', error);
-      return { error: 'Erro interno do sistema' };
-    }
-  },
-
-  async createUserWithAdmin(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    try {
-      console.log('👑 Criando usuário com Admin API...');
-      
-      // 1. Criar usuário no auth.users usando Service Role Key
-      const { data: authUser, error: authError } = await supabaseAdmin!.auth.admin.createUser({
-        email: email,
-        password: 'nb@123',
-        email_confirm: true,
-        user_metadata: { 
-          name: name, 
-          profile 
-        }
-      });
-
-      if (authError) {
-        console.error('❌ Erro ao criar usuário no auth:', authError);
-        
-        if (authError.message?.includes('User already registered')) {
-          return { error: 'Este email já está cadastrado no sistema de autenticação' };
-        }
-        
-        return { error: `Erro na criação: ${authError.message}` };
-      }
-
-      if (!authUser?.user) {
-        return { error: 'Erro: usuário não foi criado no sistema de autenticação' };
-      }
-
-      console.log('✅ Usuário criado no auth.users:', authUser.user.id);
-
-      // 2. Inserir na tabela public.users
-      console.log('📝 Inserindo dados na tabela public.users...');
-      const { error: insertError } = await supabase!
-        .from('users')
-        .insert({
-          id: authUser.user.id,
-          email: email,
-          name: name,
-          profile: profile,
-        });
-        
-      if (insertError) {
-        console.error('❌ Erro ao inserir na tabela users:', insertError);
-        
-        // Se falhou ao inserir na tabela, tentar remover o usuário do auth
-        try {
-          await supabaseAdmin!.auth.admin.deleteUser(authUser.user.id);
-          console.log('🧹 Usuário removido do auth devido ao erro na tabela');
-        } catch (cleanupError) {
-          console.error('❌ Erro ao limpar usuário do auth:', cleanupError);
-        }
-        
-        return { error: `Erro ao criar perfil: ${insertError.message}` };
-      }
-      
-      console.log('✅ Dados inseridos na tabela public.users');
-      return { error: null };
-      
-    } catch (error) {
-      console.error('❌ Erro interno na criação com admin:', error);
-      return { error: 'Erro interno do sistema' };
-    }
-  },
-
-  async createUserPublic(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    try {
-      console.log('🔓 Criando usuário com método público...');
-      
-      // Fazer logout de qualquer sessão atual
-      await supabase!.auth.signOut();
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Tentar criar usuário usando signUp (método público)
-      const { data: authData, error: authError } = await supabase!.auth.signUp({
-        email: email,
-        password: 'nb@123',
-        options: {
-          data: { 
-            name: name, 
-            profile: profile 
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('❌ Erro ao criar usuário via signUp:', authError);
-        
-        if (authError.message?.includes('User already registered')) {
-          return { error: 'Este email já está cadastrado no sistema de autenticação' };
-        }
-        
-        if (authError.message?.includes('Database error')) {
-          return { error: 'Erro de conexão com o banco de dados. Verifique a configuração do Supabase.' };
-        }
-        
-        return { error: `Erro na criação: ${authError.message}` };
-      }
-
-      if (!authData?.user) {
-        return { error: 'Erro: usuário não foi criado no sistema de autenticação' };
-      }
-
-      console.log('✅ Usuário criado via signUp:', authData.user.id);
-
-      // Aguardar um pouco para garantir sincronização
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Inserir na tabela public.users
-      console.log('📝 Inserindo dados na tabela public.users...');
-      const { error: insertError } = await supabase!
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: email,
-          name: name,
-          profile: profile,
-        });
-        
-      if (insertError) {
-        console.error('❌ Erro ao inserir na tabela users:', insertError);
-        console.warn('⚠️ Usuário criado no auth mas falhou na tabela users');
-        return { error: `Erro ao criar perfil: ${insertError.message}` };
-      }
-      
-      console.log('✅ Dados inseridos na tabela public.users');
-      
-      // Fazer logout do usuário recém-criado para não interferir na sessão atual
-      await supabase!.auth.signOut();
-      
-      return { error: null };
-      
-    } catch (error) {
-      console.error('❌ Erro interno na criação pública:', error);
       return { error: 'Erro interno do sistema' };
     }
   },
