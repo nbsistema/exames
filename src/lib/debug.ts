@@ -2,6 +2,32 @@
 import { supabase } from './supabase';
 
 export const debugAuth = {
+  async clearAndRestart(): Promise<void> {
+    console.log('🧹 === LIMPEZA COMPLETA E RESTART ===');
+    
+    try {
+      // 1. Fazer logout
+      if (supabase) {
+        await supabase.auth.signOut();
+        console.log('🚪 Logout realizado');
+      }
+      
+      // 2. Limpar storage
+      localStorage.clear();
+      sessionStorage.clear();
+      console.log('🗑️ Storage limpo');
+      
+      // 3. Aguardar um pouco
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 4. Recarregar página
+      console.log('🔄 Recarregando página...');
+      window.location.reload();
+    } catch (error) {
+      console.error('❌ Erro na limpeza:', error);
+    }
+  },
+
   async testConnection(): Promise<void> {
     console.log('🔍 === TESTE DE CONEXÃO SUPABASE ===');
     
@@ -10,6 +36,11 @@ export const debugAuth = {
     console.log('- VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
     console.log('- VITE_SUPABASE_ANON_KEY presente:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
     console.log('- VITE_SUPABASE_ANON_KEY (primeiros 20 chars):', import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0, 20) + '...');
+    
+    // 1.5. Verificar múltiplas instâncias
+    console.log('🔍 Verificando múltiplas instâncias do GoTrueClient...');
+    const storageKeys = Object.keys(localStorage).filter(key => key.includes('supabase'));
+    console.log('🗄️ Chaves do localStorage relacionadas ao Supabase:', storageKeys);
     
     // 2. Testar URL
     try {

@@ -39,6 +39,13 @@ export function LoginForm() {
       setLoading(false);
       return;
     }
+    
+    // Timeout para evitar loading infinito
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('Timeout: Login demorou muito para responder. Tente novamente.');
+    }, 15000); // 15 segundos
+    
     try {
       console.log('🔐 Iniciando processo de login...');
       console.log('📧 Email:', email.trim().toLowerCase());
@@ -46,13 +53,18 @@ export function LoginForm() {
       
       const { error: signInError } = await signIn(email, password);
       
+      clearTimeout(timeoutId);
+      
       if (signInError) {
         console.error('❌ Erro no login:', signInError);
         setError(signInError);
       } else {
         console.log('✅ Login realizado com sucesso');
+        // Não definir loading como false aqui, deixar o AuthContext gerenciar
+        return;
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Erro no login:', error);
       setError(`Erro interno do sistema: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }

@@ -7,11 +7,23 @@ import { CheckupDashboard } from './checkup/CheckupDashboard';
 
 export function Dashboard() {
   const { user, loading } = useAuth();
+  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   console.log('📊 Dashboard renderizando:', { user: user?.email, profile: user?.profile, loading });
 
+  useEffect(() => {
+    // Simular carregamento do dashboard
+    if (user && !loading) {
+      const timer = setTimeout(() => {
+        setDashboardLoading(false);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [user, loading]);
+
   // Mostrar loading se ainda está carregando
-  if (loading) {
+  if (loading || dashboardLoading) {
     console.log('⏳ Dashboard em loading');
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -55,6 +67,12 @@ export function Dashboard() {
                 <p className="text-yellow-700">
                   O perfil "{user.profile}" não é válido. Entre em contato com o administrador.
                 </p>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="mt-2 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+                >
+                  Recarregar Página
+                </button>
               </div>
             </div>
           );
@@ -68,6 +86,12 @@ export function Dashboard() {
             <p className="text-red-700">
               Ocorreu um erro ao carregar o dashboard. Tente recarregar a página.
             </p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Recarregar Página
+            </button>
             <details className="mt-2">
               <summary className="cursor-pointer text-sm">Detalhes do erro</summary>
               <pre className="text-xs mt-1 bg-red-100 p-2 rounded">

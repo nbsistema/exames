@@ -33,7 +33,8 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
     autoRefreshToken: true,
     detectSessionInUrl: true,
     debug: import.meta.env.DEV,
-    storage: window.localStorage
+    storage: window.localStorage,
+    flowType: 'pkce'
   },
   global: {
     headers: {
@@ -43,6 +44,11 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
   db: {
     schema: 'public',
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 2
+    }
+  }
 }) : null;
 
 // Cliente admin com Service Role Key para operações administrativas

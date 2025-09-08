@@ -103,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     if (!supabase) {
       console.warn('⚠️ Supabase não configurado');
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.warn('⚠️ Erro ao verificar usuário:', error);
         setUser(null);
+        setLoading(false);
         return;
       }
 
@@ -136,7 +138,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     console.log('🔄 AuthContext useEffect executando...');
 
-    checkUser();
+    // Adicionar timeout para evitar loop infinito
+    const timeoutId = setTimeout(() => {
+      checkUser();
+    }, 100);
 
     if (!supabase) return;
 
@@ -150,26 +155,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const userData = await fetchUserData(session.user);
           console.log('👤 Dados obtidos:', userData);
           setUser(userData);
+          setLoading(false);
         } else if (event === 'SIGNED_OUT') {
           console.log('🚪 Usuário deslogado');
           setUser(null);
+          setLoading(false);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Manter usuário logado quando token é renovado
           console.log('🔄 Token renovado');
           const userData = await fetchUserData(session.user);
           setUser(userData);
+          setLoading(false);
         }
       } catch (error) {
         console.error('❌ Erro no auth state change:', error);
         if (event === 'SIGNED_OUT') {
           setUser(null);
         }
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, [checkUser, fetchUserData]);
 
   const signIn = useCallback(async (email: string, password: string) => {
