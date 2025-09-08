@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, UserProfile } from '../lib/supabase';
 import { authService } from '../lib/auth';
+import { databaseService } from '../lib/database';
 
 export interface AuthUser {
   id: string;
@@ -23,10 +24,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userDataCache, setUserDataCache] = useState<Map<string, AuthUser>>(new Map());
 
   // Função para buscar dados do usuário da tabela users
   const fetchUserData = useCallback(async (authUser: any): Promise<AuthUser | null> => {
     if (!authUser || !supabase) return null;
+
+    // Verificar cache primeiro
+    const cachedUser = userDataCache.get(authUser.id);
+    if (cachedUser) {
+      console.log('✅ Usando dados do usuário em cache:', cachedUser.email);
+      return cachedUser;
+    }
 
     try {
       console.log('🔍 Buscando dados do usuário:', authUser.id);
@@ -67,39 +76,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('✅ Entrada criada na tabela users');
           }
           
+          // Adicionar ao cache
+          setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
           return fallbackUser;
         }
         
         // Retornar dados básicos se não conseguir buscar da tabela
-        return {
+        const fallbackUser = {
           id: authUser.id,
           email: authUser.email || '',
           name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
           profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
         };
+        
+        // Adicionar ao cache
+        setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
+        return fallbackUser;
       }
 
       console.log('✅ Dados do usuário carregados:', userData);
-      return {
+      const userResult = {
         id: userData.id,
         email: userData.email,
         name: userData.name,
         profile: userData.profile as UserProfile,
       };
+      
+      // Adicionar ao cache
+      setUserDataCache(prev => new Map(prev).set(authUser.id, userResult));
+      return userResult;
     } catch (error) {
       console.warn('⚠️ Erro ao buscar dados do usuário:', error);
-      return {
+      const fallbackUser = {
         id: authUser.id,
         email: authUser.email || '',
         name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
         profile: (authUser.user_metadata?.profile || 'admin') as UserProfile,
       };
+      
+      // Adicionar ao cache
+      setUserDataCache(prev => new Map(prev).set(authUser.id, fallbackUser));
+      return fallbackUser;
     }
-  }, []);
+  }, [userDataCache]);
 
   // Função para verificar usuário atual
   const checkUser = useCallback(async () => {
-    console.log('🔍 Verificando usuário atual...');
+    if (loading === false && user !== null) {
+      console.log('ℹ️ Usuário já carregado, pulando verificação');
+      return;
+    }
+    
+    console.log('🔍 Verificando usuário atual...', { loading, hasUser: !!user });
     
     if (!supabase) {
       console.warn('⚠️ Supabase não configurado');
@@ -133,15 +161,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [fetchUserData]);
+  }, [fetchUserData, loading, user]);
 
   useEffect(() => {
     console.log('🔄 AuthContext useEffect executando...');
+    
+    // Evitar execução desnecessária
+    if (user !== null && loading === false) {
+      console.log('ℹ️ Usuário já definido, pulando useEffect');
+      return;
+    }
 
-    // Adicionar timeout para evitar loop infinito
-    const timeoutId = setTimeout(() => {
-      checkUser();
-    }, 100);
+    // Garantir que as tabelas existam antes de verificar usuário
+    const initializeAndCheckUser = async () => {
+      try {
+        // Verificar se as tabelas existem
+        await databaseService.ensureTablesExist();
+        
+        // Aguardar um pouco para evitar loop
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verificar usuário
+        await checkUser();
+      } catch (error) {
+        console.error('❌ Erro na inicialização:', error);
+        setLoading(false);
+      }
+    };
+    
+    const timeoutId = setTimeout(initializeAndCheckUser, 100);
 
     if (!supabase) return;
 
@@ -158,18 +206,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         } else if (event === 'SIGNED_OUT') {
           console.log('🚪 Usuário deslogado');
+          // Limpar cache ao fazer logout
+          setUserDataCache(new Map());
           setUser(null);
           setLoading(false);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Manter usuário logado quando token é renovado
           console.log('🔄 Token renovado');
-          const userData = await fetchUserData(session.user);
-          setUser(userData);
+          // Só buscar dados se não tiver usuário atual
+          if (!user) {
+            const userData = await fetchUserData(session.user);
+            setUser(userData);
+          }
           setLoading(false);
         }
       } catch (error) {
         console.error('❌ Erro no auth state change:', error);
         if (event === 'SIGNED_OUT') {
+          setUserDataCache(new Map());
           setUser(null);
         }
         setLoading(false);
@@ -180,7 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [checkUser, fetchUserData]);
+  }, [checkUser, fetchUserData, user, loading]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) {
@@ -251,6 +305,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('🚪 Fazendo logout...');
       await supabase.auth.signOut();
+      // Limpar cache
+      setUserDataCache(new Map());
       setUser(null);
       console.log('✅ Logout realizado com sucesso');
     } catch (error) {

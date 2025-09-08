@@ -2,6 +2,24 @@
 import { supabase } from './supabase';
 
 export const debugAuth = {
+  async clearUserCache(): Promise<void> {
+    console.log('🧹 === LIMPEZA DE CACHE DE USUÁRIO ===');
+    
+    // Limpar apenas dados relacionados ao cache de usuário
+    const keysToRemove = Object.keys(localStorage).filter(key => 
+      key.includes('supabase.auth.token') || 
+      key.includes('sb-') ||
+      key.includes('user-cache')
+    );
+    
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log('🗑️ Removido:', key);
+    });
+    
+    console.log('✅ Cache de usuário limpo');
+  },
+
   async clearAndRestart(): Promise<void> {
     console.log('🧹 === LIMPEZA COMPLETA E RESTART ===');
     
@@ -41,6 +59,28 @@ export const debugAuth = {
     console.log('🔍 Verificando múltiplas instâncias do GoTrueClient...');
     const storageKeys = Object.keys(localStorage).filter(key => key.includes('supabase'));
     console.log('🗄️ Chaves do localStorage relacionadas ao Supabase:', storageKeys);
+    
+    // Verificar se há dados de usuário em cache
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('👤 Usuário atual no auth:', user ? user.email : 'Nenhum');
+      
+      if (user) {
+        // Testar busca na tabela users
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+          
+        console.log('📊 Dados na tabela users:', userData ? 'Encontrado' : 'Não encontrado');
+        if (error) {
+          console.log('❌ Erro ao buscar na tabela:', error.message);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao verificar usuário:', error);
+    }
     
     // 2. Testar URL
     try {

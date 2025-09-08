@@ -29,6 +29,7 @@ if (import.meta.env.DEV) {
   console.log('- debugAuth.testConnection() - Testa conexão com Supabase');
   console.log('- debugAuth.testLogin(email, password) - Testa login específico');
   console.log('- debugAuth.inspectNetworkRequests() - Monitora requisições de rede');
+  console.log('- debugAuth.clearUserCache() - Limpa apenas cache de usuário');
   console.log('- envValidator.validate() - Valida variáveis de ambiente');
   console.log('- envValidator.testConnection() - Testa conectividade com Supabase');
   
@@ -39,6 +40,7 @@ if (import.meta.env.DEV) {
     console.log('🧹 Storage limpo - recarregue a página');
   };
   console.log('- clearAuthStorage() - Limpa todo o storage local');
+  console.log('- debugAuth.clearUserCache() - Limpa apenas cache de usuário (mais suave)');
 }
 
 createRoot(document.getElementById('root')!).render(
