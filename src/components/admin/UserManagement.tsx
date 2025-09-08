@@ -99,12 +99,12 @@ export function UserManagement() {
       console.log('✅ Usuário criado com sucesso');
       
       // Aguardar um pouco antes de recarregar a lista
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
-      alert('Usuário criado com sucesso!');
+      alert('Usuário criado com sucesso!\n\nCredenciais:\nEmail: ' + formData.email + '\nSenha: nb@123');
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
       alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
@@ -331,6 +331,8 @@ export function UserManagement() {
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
                 <br />• O usuário pode fazer login imediatamente após a criação
                 <br />• Email será confirmado automaticamente
+                <br />• <strong>Método usado:</strong> Criação direta (Edge Function indisponível)
+                <br />• Se houver problemas, verifique se o projeto Supabase está ativo
               </p>
             </div>
           )}
