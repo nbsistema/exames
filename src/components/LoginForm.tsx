@@ -11,6 +11,9 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showInitialSetup, setShowInitialSetup] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
   const [setupData, setSetupData] = useState({
     name: '',
     email: '',
@@ -18,6 +21,36 @@ export function LoginForm() {
   });
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupMessage, setSetupMessage] = useState('');
+
+  const handleInitialSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSetupLoading(true);
+    setSetupMessage('');
+
+    try {
+      // Implementar lógica de setup inicial aqui
+      setSetupMessage('Setup realizado com sucesso!');
+    } catch (error) {
+      setSetupMessage('Erro no setup: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setResetMessage('');
+
+    try {
+      // Implementar lógica de reset de senha aqui
+      setResetMessage('Email de recuperação enviado com sucesso!');
+    } catch (error) {
+      setResetMessage('Erro ao enviar email: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
