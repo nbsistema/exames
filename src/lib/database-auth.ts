@@ -1,5 +1,5 @@
 // Sistema de autenticação via banco de dados
-import { supabase } from './supabase';
+import { supabase, supabaseAdmin } from './supabase';
 import { UserProfile } from './supabase';
 
 export interface DatabaseUser {
@@ -33,11 +33,6 @@ export const databaseAuth = {
   // Fazer login via banco de dados
   async signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
     try {
-      if (!supabase) {
-        console.error('❌ Supabase não configurado');
-        return { user: null, error: 'Sistema não configurado. Verifique as variáveis de ambiente.' };
-      }
-
       console.log('🔐 Tentando login via banco de dados:', email);
 
       // Validar entrada
@@ -50,6 +45,12 @@ export const databaseAuth = {
       if (!normalizedEmail.includes('@')) {
         return { user: null, error: 'Email deve ter formato válido' };
       }
+
+      if (!supabase) {
+        console.error('❌ Supabase não configurado');
+        return { user: null, error: 'Sistema não configurado. Verifique as variáveis de ambiente.' };
+      }
+
       // Buscar usuário na tabela users
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -96,6 +97,11 @@ export const databaseAuth = {
   // Criar usuário no banco de dados
   async createUser(email: string, name: string, profile: UserProfile, password: string = 'nb@123'): Promise<{ error: string | null }> {
     try {
+      if (!supabase) {
+        return { error: 'Sistema não configurado' };
+      }
+
+      console.log('👥 Criando usuário no banco:', { email, name, profile });
       if (!supabase) {
         return { error: 'Sistema não configurado' };
       }
@@ -184,6 +190,11 @@ export const databaseAuth = {
       }
 
       console.log('👑 Criando primeiro administrador');
+      if (!supabase) {
+        return { error: 'Sistema não configurado' };
+      }
+
+      console.log('👑 Criando primeiro administrador');
 
       // Verificar se já existe algum admin
       const { data: existingAdmin } = await supabase
@@ -199,47 +210,6 @@ export const databaseAuth = {
       return await this.createUser(email, name, 'admin', password);
     } catch (error) {
       console.error('❌ Erro ao criar primeiro admin:', error);
-      return { error: 'Erro interno do sistema' };
-    }
-  },
-
-  // Resetar senha (simulado - em produção enviaria email)
-  async resetPassword(email: string): Promise<{ error: string | null }> {
-    try {
-      if (!supabase) {
-        return { error: 'Sistema não configurado' };
-      }
-
-      console.log('🔄 Simulando reset de senha para:', email);
-
-      // Verificar se usuário existe
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('id, name')
-        .eq('email', email.trim().toLowerCase())
-        .single();
-
-      if (userError || !userData) {
-        return { error: 'Email não encontrado no sistema' };
-      }
-
-      // Em produção, aqui enviaria um email
-      // Por enquanto, apenas resetar para senha padrão
-      const newPasswordHash = hashPassword('nb@123');
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ password_hash: newPasswordHash })
-        .eq('email', email.trim().toLowerCase());
-
-      if (updateError) {
-        return { error: 'Erro ao resetar senha' };
-      }
-
-      console.log('✅ Senha resetada para padrão');
-      return { error: null };
-    } catch (error) {
-      console.error('❌ Erro no reset de senha:', error);
       return { error: 'Erro interno do sistema' };
     }
   }

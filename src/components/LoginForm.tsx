@@ -1,18 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
-import { databaseService } from '../lib/database';
+import { databaseAuth } from '../lib/database-auth';
 
 export function LoginForm() {
-  const { signIn, resetPassword } = useAuth();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetMessage, setResetMessage] = useState('');
   const [showInitialSetup, setShowInitialSetup] = useState(false);
   const [setupData, setSetupData] = useState({
     name: '',
@@ -69,91 +66,6 @@ export function LoginForm() {
     }
     
     setLoading(false);
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setResetMessage('');
-
-    console.log('🔄 Iniciando reset de senha para:', resetEmail);
-    const { error } = await resetPassword(resetEmail);
-    
-    if (error) {
-      console.error('❌ Erro no reset:', error);
-      setResetMessage('Erro ao enviar email de recuperação');
-    } else {
-      console.log('✅ Email de recuperação enviado');
-      setResetMessage('Email de recuperação enviado com sucesso!');
-      setResetEmail('');
-      setTimeout(() => {
-        setShowResetPassword(false);
-        setResetMessage('');
-      }, 3000);
-    }
-    
-    setLoading(false);
-  };
-
-  const handleInitialSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSetupLoading(true);
-    setSetupMessage('');
-
-    // Validação no frontend
-    if (!setupData.email.trim() || !setupData.name.trim() || !setupData.password.trim()) {
-      setSetupMessage('Todos os campos são obrigatórios');
-      setSetupLoading(false);
-      return;
-    }
-    
-    if (!setupData.email.includes('@')) {
-      setSetupMessage('Email deve ter formato válido');
-      setSetupLoading(false);
-      return;
-    }
-    
-    if (setupData.password.length < 6) {
-      setSetupMessage('Senha deve ter pelo menos 6 caracteres');
-      setSetupLoading(false);
-      return;
-    }
-    try {
-      console.log('👑 Iniciando criação do primeiro admin...');
-      console.log('📧 Email:', setupData.email.trim().toLowerCase());
-      console.log('👤 Nome:', setupData.name.trim());
-      console.log('🔒 Senha length:', setupData.password.length);
-      
-      // Usar databaseAuth para criar primeiro admin
-      const { databaseAuth } = await import('../lib/database-auth');
-      
-      const { error } = await databaseAuth.createFirstAdmin(
-        setupData.email,
-        setupData.name.trim(),
-        setupData.password
-      );
-
-      if (error) {
-        console.error('❌ Erro na criação do admin:', error);
-        setSetupMessage(`Erro ao criar administrador: ${error}`);
-        return;
-      }
-
-      console.log('✅ Administrador criado com sucesso');
-      setSetupMessage('Administrador criado com sucesso! Você pode fazer login agora com as credenciais criadas.');
-      setSetupData({ name: '', email: '', password: '' });
-      
-      // Aguardar um pouco para garantir sincronização
-      setTimeout(() => {
-        setShowInitialSetup(false);
-        setSetupMessage('');
-      }, 5000);
-    } catch (error) {
-      console.error('Setup error:', error);
-      setSetupMessage(`Erro interno do sistema: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
-    } finally {
-      setSetupLoading(false);
-    }
   };
 
   if (showInitialSetup) {
@@ -396,16 +308,6 @@ export function LoginForm() {
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
 
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => setShowResetPassword(true)}
-                className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
-              >
-                Esqueci minha senha
-              </button>
-            </div>
-
             <div className="text-center mt-4 pt-4 border-t border-gray-200">
               <button
                 type="button"
@@ -423,7 +325,7 @@ export function LoginForm() {
               <br />• <strong>Sistema de login via banco de dados</strong>
               <br />• Os usuários são armazenados na tabela public.users
               <br />• Senha padrão para novos usuários: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-              <br />• As senhas são criptografadas no banco de dados
+              <br />• As senhas são criptografadas automaticamente
               <br />• Sessões duram 24 horas
             </p>
           </div>

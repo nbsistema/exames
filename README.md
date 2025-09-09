@@ -30,21 +30,21 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 2. Configurar Banco de Dados
 
-Execute a migration no SQL Editor do Supabase para criar a função e trigger automáticas:
+Execute a migration no SQL Editor do Supabase para criar as tabelas:
 
 ```sql
--- No SQL Editor do Supabase, execute o conteúdo do arquivo:
--- supabase/migrations/create_handle_new_user_function.sql
+-- Execute no SQL Editor do Supabase:
+-- supabase/migrations/create_users_table_with_password.sql
 ```
 
-Isso criará:
-- Função `handle_new_user()` que sincroniza auth.users com public.users
-- Trigger `on_auth_user_created` que executa automaticamente
-- Tabela `public.users` com estrutura correta
-- Políticas RLS para segurança
-- Índices para performance
+**IMPORTANTE:** Este sistema usa autenticação via banco de dados próprio, não o Supabase Auth.
 
-**Importante:** Execute esta migration antes de criar usuários no sistema.
+Isso criará:
+- Tabela `public.users` com sistema de senhas próprio
+- Todas as tabelas do sistema (partners, doctors, insurances, etc.)
+- Políticas RLS com acesso público para permitir login
+- Índices para performance
+- Triggers para updated_at automático
 
 ### 2. Instalar Dependências
 
@@ -101,17 +101,19 @@ debugAuth.inspectNetworkRequests()
 
 ## 🔐 Credenciais de Desenvolvimento
 
-Para testes rápidos, o sistema inclui credenciais de desenvolvimento:
-- **Email:** admin@nb.com
-- **Senha:** admin123
+**Sistema de Autenticação via Banco de Dados:**
+- Não usa Supabase Auth
+- Senhas são criptografadas e armazenadas na tabela `public.users`
+- Senha padrão para novos usuários: `nb@123`
+- Sessões duram 24 horas no localStorage
 
 ## 📋 Funcionalidades
 
 ### Sistema de Usuários
-- **Criação automática:** Usuários criados em `auth.users` são automaticamente sincronizados com `public.users`
-- **Metadados:** Nome e perfil são extraídos dos `user_metadata`
-- **Valores padrão:** Nome padrão "Sem nome" e perfil padrão "checkup"
-- **Netlify Functions:** Endpoint serverless para criação de usuários via API
+- **Autenticação própria:** Sistema independente do Supabase Auth
+- **Criptografia:** Senhas são hasheadas antes de serem salvas
+- **Sessões:** Gerenciadas via localStorage com expiração
+- **Netlify Functions:** Endpoint para criação de usuários (opcional)
 
 ### Perfis de Acesso
 - **Administrador:** Gestão completa do sistema
@@ -121,36 +123,31 @@ Para testes rápidos, o sistema inclui credenciais de desenvolvimento:
 
 ## 🛠️ Resolução de Problemas
 
-### Erro na Sincronização de Usuários
+### Erro de Login "Email ou senha incorretos"
 
-1. Verifique se a migration foi executada corretamente
-2. Confirme que a função `handle_new_user()` existe
-3. Verifique se o trigger `on_auth_user_created` está ativo
-4. Execute no SQL Editor: `SELECT * FROM information_schema.triggers WHERE trigger_name = 'on_auth_user_created';`
+1. Verifique se a migration `create_users_table_with_password.sql` foi executada
+2. Confirme que a tabela `users` existe: `SELECT * FROM users LIMIT 1;`
+3. Verifique se há usuários cadastrados: `SELECT email, name, profile FROM users;`
+4. Para criar o primeiro admin, use o botão "Primeiro acesso? Criar administrador"
 
-### Problemas com Netlify Functions
+### Erro 400 "Failed to load resource"
 
-1. Verifique se as variáveis de ambiente estão configuradas no Netlify
-2. Confirme que `SUPABASE_SERVICE_ROLE_KEY` está definida (não exposta no frontend)
-3. Teste a função localmente com `netlify dev`
-
-### Erro 400 no Login
-
-1. Verifique se as variáveis de ambiente estão corretas
-2. Use as ferramentas de debug no console
-3. Verifique se o projeto Supabase está ativo
-4. Confirme se não há limites de taxa atingidos
+1. Verifique se `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` estão corretas
+2. Confirme que o projeto Supabase está ativo
+3. Teste a conectividade: `debugAuth.testConnection()` no console
+4. Verifique se as políticas RLS estão configuradas corretamente
 
 ### Primeiro Acesso
 
 1. Clique em "Primeiro acesso? Criar administrador"
 2. Preencha os dados do primeiro usuário
-3. Aguarde a criação e faça login
+3. Aguarde a criação (pode demorar alguns segundos)
+4. Faça login com as credenciais criadas
 
 ## 🔍 Logs e Monitoramento
 
 O sistema inclui logs detalhados no console para facilitar o debug:
 - Validação automática de variáveis de ambiente
-- Testes de conectividade
-- Monitoramento de requisições de autenticação
+- Logs de tentativas de login
+- Informações sobre criação de usuários
 - Feedback detalhado de erros

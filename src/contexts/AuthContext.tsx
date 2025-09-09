@@ -1,14 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile } from '../lib/supabase';
 import { databaseAuth, AuthUser } from '../lib/database-auth';
-import { databaseService } from '../lib/database';
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<{ error: string | null }>;
   createUser: (email: string, name: string, profile: UserProfile) => Promise<{ error: string | null }>;
 }
 
@@ -23,9 +21,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('🔄 Inicializando AuthContext com banco de dados...');
     
     try {
-      // Garantir que as tabelas existam
-      await databaseService.ensureTablesExist();
-      
       // Verificar usuário atual
       const currentUser = databaseAuth.getCurrentUser();
       
@@ -99,24 +94,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const resetPassword = useCallback(async (email: string) => {
-    try {
-      console.log('🔄 Resetando senha para:', email);
-      const { error } = await databaseAuth.resetPassword(email);
-      
-      if (error) {
-        console.error('❌ Erro no reset:', error);
-        return { error };
-      }
-      
-      console.log('✅ Senha resetada com sucesso');
-      return { error: null };
-    } catch (error) {
-      console.error('❌ Erro interno no reset de senha:', error);
-      return { error: 'Erro interno do sistema' };
-    }
-  }, []);
-
   const createUser = useCallback(async (email: string, name: string, profile: UserProfile) => {
     try {
       console.log('👥 Criando usuário via banco:', { email, name, profile });
@@ -140,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     signIn,
     signOut,
-    resetPassword,
     createUser,
   };
 

@@ -1,93 +1,38 @@
 import { createClient } from '@supabase/supabase-js';
-import './env-validator'; // Importar validador automaticamente
 
 // Usar variáveis de ambiente do Netlify (NEXT_PUBLIC_* são expostas no frontend)
 const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabaseServiceKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY || import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Missing Supabase environment variables');
-  console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl);
-  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Present' : 'Missing');
-  console.warn('⚠️ Supabase não configurado - usando modo fallback');
-}
-
-// Validar formato da URL
-if (supabaseUrl) {
-  try {
-    new URL(supabaseUrl);
-  } catch (error) {
-    console.error('❌ Invalid Supabase URL format:', supabaseUrl);
-    console.warn('⚠️ URL inválida - usando modo fallback');
-  }
-}
-
-// Limpar URL para evitar problemas de formatação
-const cleanUrl = supabaseUrl?.trim().replace(/\/$/, '') || '';
-const cleanKey = supabaseAnonKey?.trim() || '';
-
 // Criar cliente Supabase apenas se as variáveis estiverem disponíveis
-export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(
+  supabaseUrl.trim(),
+  supabaseAnonKey.trim(),
+  {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
-    debug: import.meta.env.DEV,
-    storage: window.localStorage,
-    flowType: 'pkce',
-    storageKey: 'nb-auth-token'
+    detectSessionInUrl: false, // Desabilitar para evitar conflitos
+    debug: false, // Desabilitar debug para evitar logs desnecessários
   },
-  global: {
-    headers: {
-      'apikey': cleanKey
-    },
-  },
-  db: {
-    schema: 'public',
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 2
-    }
-  }
 }) : null;
 
 // Criar cliente admin apenas se a service role key estiver disponível
-export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey, {
+export const supabaseAdmin = (supabaseUrl && supabaseServiceKey) ? createClient(
+  supabaseUrl.trim(),
+  supabaseServiceKey.trim(),
+  {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   },
-  global: {
-    headers: {
-      'apikey': supabaseServiceKey.trim()
-    },
-  }
 }) : null;
 
 // Debug logs
 if (import.meta.env.DEV) {
-  console.log('🔗 Supabase URL:', supabaseUrl);
-  console.log('🔑 Supabase anon key (início):', supabaseAnonKey?.slice(0, 20) + '...');
-  
-  // Testar conexão apenas se o cliente foi criado
-  if (supabase) {
-    console.log('🔄 Testando conexão com Supabase...');
-    supabase.auth.getSession()
-      .then(({ error }) => {
-        if (error) {
-          console.error('❌ Erro de conexão com Supabase Auth:', error);
-        } else {
-          console.log('✅ Conexão com Supabase Auth estabelecida');
-        }
-      })
-      .catch(() => {
-        console.warn('⚠️ Não foi possível testar a conexão com Supabase');
-      });
-  } else {
-    console.warn('⚠️ Cliente Supabase não foi criado - usando modo fallback');
-  }
+  console.log('🔗 Supabase configurado:', !!supabase);
+  console.log('🔑 Admin configurado:', !!supabaseAdmin);
 }
 
 // Tipos auxiliares
