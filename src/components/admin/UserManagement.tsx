@@ -82,14 +82,12 @@ export function UserManagement() {
         console.error('❌ Erro ao criar usuário:', error);
         
         // Mostrar erro mais amigável
-        if (error.includes('já está cadastrado')) {
+        if (error.includes('já está cadastrado') || error.includes('already registered')) {
           alert('Este email já está cadastrado no sistema.');
         } else if (error.includes('Database error') || error.includes('conexão com o banco')) {
           alert('Erro de conexão com o banco de dados. Verifique:\n1. Se o projeto Supabase está ativo\n2. Se as variáveis de ambiente estão corretas\n3. Se há conectividade com a internet');
-        } else if (error.includes('Acesso negado')) {
-          alert('Apenas administradores podem criar usuários.');
-        } else if (error.includes('precisa estar logado')) {
-          alert('Você precisa estar logado para criar usuários.');
+        } else if (error.includes('Supabase não configurado')) {
+          alert('Sistema não configurado corretamente. Verifique as variáveis de ambiente.');
         } else {
           alert(`Erro ao criar usuário: ${error}`);
         }
@@ -99,12 +97,12 @@ export function UserManagement() {
       console.log('✅ Usuário criado com sucesso');
       
       // Aguardar um pouco antes de recarregar a lista
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
-      alert('Usuário criado com sucesso!\n\nCredenciais:\nEmail: ' + formData.email + '\nSenha: nb@123');
+      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123\n\nO usuário pode fazer login imediatamente.');
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
       alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
@@ -330,9 +328,8 @@ export function UserManagement() {
                 <strong>Informações importantes:</strong>
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
                 <br />• O usuário pode fazer login imediatamente após a criação
-                <br />• Email será confirmado automaticamente
-                <br />• <strong>Método usado:</strong> Criação direta (Edge Function indisponível)
-                <br />• Se houver problemas, verifique se o projeto Supabase está ativo
+                <br />• O sistema usa método direto de criação (signUp público)
+                <br />• Se houver problemas, verifique se o projeto Supabase está ativo e as variáveis de ambiente estão corretas
               </p>
             </div>
           )}

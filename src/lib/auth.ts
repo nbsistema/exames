@@ -23,65 +23,24 @@ export const authService = {
         return { error: 'Email deve ter formato válido' };
       }
 
-      // Usar Netlify Function para criar usuário
-      console.log('🔄 Criando usuário via Netlify Function...');
-      
-      const response = await fetch('/.netlify/functions/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: normalizedEmail,
-          password: 'nb@123', // Senha padrão
-          name: name.trim(),
-          profile: profile
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ Erro da Netlify Function:', data);
-        
-        if (response.status === 409) {
-          return { error: 'Este email já está cadastrado' };
-        } else if (response.status === 400) {
-          return { error: data.error || 'Dados inválidos' };
-        } else if (response.status === 500) {
-          return { error: 'Erro interno do servidor. Tente novamente.' };
-        }
-        
-        return { error: data.error || 'Erro ao criar usuário' };
+      if (!supabase) {
+        return { error: 'Supabase não configurado' };
       }
 
-      if (data.success) {
-        console.log('✅ Usuário criado com sucesso via Netlify Function');
-        return { error: null };
-      }
-
-      return { error: 'Resposta inválida do servidor' };
+      // Usar método direto com signUp (funciona sem service role)
+      console.log('🔄 Criando usuário via signUp público...');
       
-    } catch (error) {
-      console.error('❌ Erro interno na criação do usuário:', error);
-      return { error: 'Erro interno do sistema' };
-    }
-  },
-
-  async createUserFallback(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    try {
-      console.log('🔄 Usando método fallback para criar usuário...');
-      
-      // Salvar sessão atual
+      // Salvar sessão atual do admin
       const { data: { session: currentSession } } = await supabase.auth.getSession();
+      console.log('💾 Sessão atual salva:', currentSession ? 'Sim' : 'Não');
       
       // Criar usuário usando signUp público
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email,
+        email: normalizedEmail,
         password: 'nb@123', // Senha padrão
         options: {
           data: { 
-            name: name, 
+            name: name.trim(), 
             profile: profile 
           }
         }
@@ -91,14 +50,18 @@ export const authService = {
         console.error('❌ Erro no signUp:', authError);
         
         if (authError.message?.includes('User already registered')) {
-          return { error: 'Este email já está cadastrado' };
+          return { error: 'Este email já está cadastrado no sistema' };
         }
         
         if (authError.message?.includes('Database error')) {
-          return { error: 'Erro de conexão com o banco de dados. Verifique a configuração do Supabase.' };
+          return { error: 'Erro de conexão com o banco de dados. Verifique se o projeto Supabase está ativo.' };
         }
         
-        return { error: authError.message };
+        if (authError.message?.includes('Invalid email')) {
+          return { error: 'Email inválido' };
+        }
+        
+        return { error: `Erro ao criar usuário: ${authError.message}` };
       }
 
       if (!authData?.user) {
@@ -107,56 +70,76 @@ export const authService = {
 
       console.log('✅ Usuário criado no Auth:', authData.user.id);
       
-      // Aguardar sincronização
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Aguardar para garantir que a trigger foi executada
+      console.log('⏳ Aguardando sincronização com a tabela users...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Criar entrada na tabela users
-      const { error: insertError } = await supabase
+      // Verificar se foi inserido na tabela users
+      const { data: userData, error: userError } = await supabase
         .from('users')
-        .insert({
-          id: authData.user.id,
-          email: email,
-          name: name,
-          profile: profile,
-        });
+        .select('id, email, name, profile')
+        .eq('id', authData.user.id)
+        .single();
         
-      if (insertError) {
-        console.error('❌ Erro ao inserir na tabela users:', insertError);
+      if (userError) {
+        console.warn('⚠️ Usuário não encontrado na tabela users, tentando inserir manualmente:', userError);
         
-        // Tentar novamente após mais tempo
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        const { error: retryError } = await supabase
+        // Tentar inserir manualmente se a trigger não funcionou
+        const { error: insertError } = await supabase
           .from('users')
           .insert({
             id: authData.user.id,
-            email: email,
-            name: name,
+            email: normalizedEmail,
+            name: name.trim(),
             profile: profile,
           });
           
-        if (retryError) {
-          console.error('❌ Erro na segunda tentativa:', retryError);
-          return { error: 'Erro ao criar perfil do usuário. O usuário foi criado no sistema de autenticação, mas pode ser necessário configurar o perfil manualmente.' };
+        if (insertError) {
+          console.error('❌ Erro ao inserir manualmente na tabela users:', insertError);
+          
+          // Aguardar mais tempo e tentar novamente
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const { error: retryError } = await supabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              email: normalizedEmail,
+              name: name.trim(),
+              profile: profile,
+            });
+            
+          if (retryError && !retryError.message?.includes('duplicate key')) {
+            console.error('❌ Erro na segunda tentativa:', retryError);
+            return { error: 'Usuário criado no sistema de autenticação, mas houve problema ao criar o perfil. Tente fazer login com as credenciais fornecidas.' };
+          }
         }
+      } else {
+        console.log('✅ Usuário encontrado na tabela users:', userData);
       }
       
       // Restaurar sessão original se existia
       if (currentSession) {
         try {
+          console.log('🔄 Restaurando sessão original...');
           await supabase.auth.setSession(currentSession);
           console.log('✅ Sessão original restaurada');
         } catch (sessionError) {
           console.warn('⚠️ Não foi possível restaurar a sessão original:', sessionError);
+          // Não é um erro crítico, continuar
         }
+      } else {
+        // Se não havia sessão, fazer logout do usuário recém-criado
+        console.log('🚪 Fazendo logout do usuário recém-criado...');
+        await supabase.auth.signOut();
       }
       
-      console.log('✅ Usuário criado com sucesso via método fallback');
+      console.log('✅ Usuário criado com sucesso');
       return { error: null };
       
     } catch (error) {
-      console.error('❌ Erro no método fallback:', error);
-      return { error: 'Erro interno do sistema no método alternativo' };
+      console.error('❌ Erro interno na criação do usuário:', error);
+      return { error: 'Erro interno do sistema. Verifique o console para mais detalhes.' };
     }
   },
 
@@ -221,10 +204,19 @@ export const authService = {
         console.log('✅ Admin criado no Auth:', authData.user.id);
         
         // Aguardar para garantir sincronização
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
-        // Criar entrada na tabela users
-        try {
+        // Verificar se foi inserido na tabela users
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', authData.user.id)
+          .single();
+          
+        if (userError) {
+          console.warn('⚠️ Admin não encontrado na tabela users, tentando inserir manualmente');
+          
+          // Tentar inserir manualmente se a trigger não funcionou
           const { error: insertError } = await supabase
             .from('users')
             .insert({
@@ -234,33 +226,14 @@ export const authService = {
               profile: 'admin',
             });
             
-          if (insertError) {
-            console.error('❌ Erro ao inserir na tabela users:', insertError);
-            
-            // Tentar novamente após mais tempo
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            const { error: retryError } = await supabase
-              .from('users')
-              .insert({
-                id: authData.user.id,
-                email: normalizedEmail,
-                name,
-                profile: 'admin',
-              });
-              
-            if (retryError) {
-              console.error('❌ Erro na segunda tentativa:', retryError);
-              return { error: 'Erro ao criar perfil do administrador. Tente fazer login mesmo assim.' };
-            }
+          if (insertError && !insertError.message?.includes('duplicate key')) {
+            console.error('❌ Erro ao inserir admin na tabela users:', insertError);
+            return { error: 'Erro ao criar perfil do administrador. Tente fazer login mesmo assim.' };
           }
-          
-          console.log('✅ Entrada criada na tabela users');
-          return { error: null };
-        } catch (insertError) {
-          console.error('❌ Erro ao criar entrada na tabela users:', insertError);
-          return { error: 'Erro ao criar perfil do administrador. Tente fazer login mesmo assim.' };
         }
+        
+        console.log('✅ Admin criado com sucesso');
+        return { error: null };
       }
       
       return { error: 'Erro desconhecido ao criar administrador' };
