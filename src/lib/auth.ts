@@ -9,10 +9,6 @@ export interface AuthUser {
 
 export const authService = {
   async createUser(email: string, name: string, profile: UserProfile): Promise<{ error: string | null }> {
-    if (!supabase) {
-      return { error: 'Supabase não configurado' };
-    }
-
     try {
       console.log('👥 Criando usuário:', { email, name, profile });
       
@@ -27,68 +23,44 @@ export const authService = {
         return { error: 'Email deve ter formato válido' };
       }
 
-      // Verificar se o usuário atual está logado e é admin
-      const { data: { session } } = await supabase.auth.getSession();
+      // Usar Netlify Function para criar usuário
+      console.log('🔄 Criando usuário via Netlify Function...');
       
-      if (!session) {
-        return { error: 'Você precisa estar logado para criar usuários' };
+      const response = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: 'nb@123', // Senha padrão
+          name: name.trim(),
+          profile: profile
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('❌ Erro da Netlify Function:', data);
+        
+        if (response.status === 409) {
+          return { error: 'Este email já está cadastrado' };
+        } else if (response.status === 400) {
+          return { error: data.error || 'Dados inválidos' };
+        } else if (response.status === 500) {
+          return { error: 'Erro interno do servidor. Tente novamente.' };
+        }
+        
+        return { error: data.error || 'Erro ao criar usuário' };
       }
 
-      // Verificar se o usuário atual é admin
-      const { data: currentUser, error: userError } = await supabase
-        .from('users')
-        .select('profile')
-        .eq('id', session.user.id)
-        .single();
-
-      if (userError || currentUser?.profile !== 'admin') {
-        return { error: 'Apenas administradores podem criar usuários' };
+      if (data.success) {
+        console.log('✅ Usuário criado com sucesso via Netlify Function');
+        return { error: null };
       }
 
-      // Tentar usar Edge Function primeiro
-      try {
-        console.log('🔄 Tentando criar usuário via Edge Function...');
-        
-        const { data, error } = await supabase.functions.invoke('create-user', {
-          body: {
-            email: normalizedEmail,
-            name: name.trim(),
-            profile: profile
-          }
-        });
-
-        if (error) {
-          console.warn('⚠️ Edge Function falhou:', error);
-          throw new Error('Edge Function não disponível');
-        }
-
-        if (data?.error) {
-          console.error('❌ Erro retornado pela Edge Function:', data.error);
-          
-          if (data.error.includes('User already registered')) {
-            return { error: 'Este email já está cadastrado' };
-          } else if (data.error.includes('Forbidden')) {
-            return { error: 'Acesso negado - apenas administradores podem criar usuários' };
-          } else if (data.error.includes('Unauthorized')) {
-            return { error: 'Você precisa estar logado para criar usuários' };
-          }
-          
-          return { error: data.error };
-        }
-
-        if (data?.success) {
-          console.log('✅ Usuário criado com sucesso via Edge Function');
-          return { error: null };
-        }
-
-        throw new Error('Resposta inválida da Edge Function');
-        
-      } catch (edgeFunctionError) {
-        console.warn('⚠️ Edge Function não disponível, usando método alternativo:', edgeFunctionError);
-        
-        // Fallback: usar signUp público (método menos seguro mas funcional)
-        return await this.createUserFallback(normalizedEmail, name.trim(), profile);
-      }
+      return { error: 'Resposta inválida do servidor' };
       
     } catch (error) {
       console.error('❌ Erro interno na criação do usuário:', error);

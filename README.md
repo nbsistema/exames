@@ -4,24 +4,42 @@ Sistema de gestão de exames e check-ups médicos desenvolvido com React, TypeSc
 
 ## 🚀 Configuração Inicial
 
-### 1. Configurar Variáveis de Ambiente
+### 1. Configurar Variáveis de Ambiente para Netlify
 
-O arquivo `.env` foi criado com configurações baseadas no seu projeto Supabase. **IMPORTANTE**: Você precisa substituir a chave de exemplo pela chave real.
+Configure as seguintes variáveis de ambiente no Netlify (Site settings > Environment variables):
 
-#### Como obter as credenciais corretas:
+#### Variáveis obrigatórias:
 
-1. **Acesse o painel do Supabase:** https://app.supabase.com
-2. **Selecione seu projeto** (xvoxphvdojuxkmxxjmoj)
-3. **Vá em Settings → API**
-4. **Copie as seguintes informações:**
-   - **Project URL:** `https://xvoxphvdojuxkmxxjmoj.supabase.co` (já configurada)
-   - **anon/public key:** Substitua no arquivo `.env`
-
-#### Estrutura do arquivo `.env`:
 ```env
-VITE_SUPABASE_URL=https://xvoxphvdojuxkmxxjmoj.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_chave_real_aqui
+# URL do projeto Supabase (para frontend e backend)
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+
+# Chave anônima (para frontend)
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Chave de Service Role (APENAS para Netlify Functions - nunca expor no frontend)
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
+
+#### Como obter as credenciais:
+
+1. Acesse https://app.supabase.com
+2. Selecione seu projeto
+3. Vá em Settings → API
+4. Copie as chaves necessárias
+
+### 2. Configurar Banco de Dados
+
+Execute a migration para criar a função e trigger automáticas:
+
+```sql
+-- No SQL Editor do Supabase, execute o conteúdo do arquivo:
+-- supabase/migrations/create_handle_new_user_function.sql
+```
+
+Isso criará:
+- Função `handle_new_user()` que sincroniza auth.users com public.users
+- Trigger `on_auth_user_created` que executa automaticamente
 
 ### 2. Instalar Dependências
 
