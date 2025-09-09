@@ -70,9 +70,11 @@ export const databaseService = {
       const usersTable = `
         CREATE TABLE IF NOT EXISTS users (
           id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           email text UNIQUE NOT NULL,
           name text NOT NULL,
           profile text NOT NULL CHECK (profile IN ('admin', 'parceiro', 'checkup', 'recepcao')),
+          password_hash text NOT NULL,
           created_at timestamptz DEFAULT now(),
           updated_at timestamptz DEFAULT now()
         );

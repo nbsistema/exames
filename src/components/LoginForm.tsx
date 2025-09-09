@@ -125,10 +125,10 @@ export function LoginForm() {
       console.log('👤 Nome:', setupData.name.trim());
       console.log('🔒 Senha length:', setupData.password.length);
       
-      // Importar authService corretamente
-      const { authService } = await import('../lib/auth');
+      // Usar databaseAuth para criar primeiro admin
+      const { databaseAuth } = await import('../lib/database-auth');
       
-      const { error } = await authService.createFirstAdmin(
+      const { error } = await databaseAuth.createFirstAdmin(
         setupData.email,
         setupData.name.trim(),
         setupData.password
@@ -421,11 +421,11 @@ export function LoginForm() {
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
               <strong>Importante:</strong> 
-              <br />• <strong>Login de desenvolvimento:</strong> admin@nb.com / admin123
-              <br />• O sistema usa múltiplas estratégias para funcionar
-              <br />• Se o Supabase não funcionar, usa armazenamento local
-              <br />• Para novos usuários: senha padrão é <code className="bg-blue-100 px-1 rounded">nb@123</code>
-              <br />• Em caso de problemas, use as credenciais de desenvolvimento
+              <br />• <strong>Sistema de login via banco de dados</strong>
+              <br />• Os usuários são armazenados na tabela public.users
+              <br />• Senha padrão para novos usuários: <code className="bg-blue-100 px-1 rounded">nb@123</code>
+              <br />• As senhas são criptografadas no banco de dados
+              <br />• Sessões duram 24 horas
             </p>
           </div>
         </div>

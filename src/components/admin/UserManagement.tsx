@@ -72,7 +72,7 @@ export function UserManagement() {
     try {
       console.log('👥 Iniciando criação de usuário:', formData);
       
-      const { error } = await authService.createUser(
+      const { error } = await createUser(
         formData.email,
         formData.name.trim(),
         formData.profile
@@ -84,10 +84,6 @@ export function UserManagement() {
         // Mostrar erro mais amigável
         if (error.includes('já está cadastrado') || error.includes('already registered')) {
           alert('Este email já está cadastrado no sistema.');
-        } else if (error.includes('Database error') || error.includes('conexão com o banco')) {
-          alert('Erro de conexão com o banco de dados. Verifique:\n1. Se o projeto Supabase está ativo\n2. Se as variáveis de ambiente estão corretas\n3. Se há conectividade com a internet');
-        } else if (error.includes('Supabase não configurado')) {
-          alert('Sistema não configurado corretamente. Verifique as variáveis de ambiente.');
         } else {
           alert(`Erro ao criar usuário: ${error}`);
         }
@@ -328,8 +324,8 @@ export function UserManagement() {
                 <strong>Informações importantes:</strong>
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
                 <br />• O usuário pode fazer login imediatamente após a criação
-                <br />• O sistema usa método direto de criação (signUp público)
-                <br />• Se houver problemas, verifique se o projeto Supabase está ativo e as variáveis de ambiente estão corretas
+                <br />• Os dados são salvos diretamente na tabela public.users
+                <br />• As senhas são criptografadas automaticamente
               </p>
             </div>
           )}
