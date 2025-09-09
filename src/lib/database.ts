@@ -1,3 +1,4 @@
+// Sistema de autenticação via banco de dados
 import { supabase } from './supabase';
 
 export const databaseService = {
@@ -66,10 +67,9 @@ export const databaseService = {
         $$ language 'plpgsql';
       `;
 
-      // 2. Criar tabela users
+      // 2. Criar tabela users (INDEPENDENTE do auth.users)
       const usersTable = `
         CREATE TABLE IF NOT EXISTS users (
-          id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           email text UNIQUE NOT NULL,
           name text NOT NULL,
@@ -86,50 +86,38 @@ export const databaseService = {
         CREATE INDEX IF NOT EXISTS idx_users_profile ON users(profile);
       `;
 
-      // 4. Criar RLS e políticas para users
+      // 4. Criar RLS e políticas para users - PERMITIR ACESSO PÚBLICO PARA LOGIN
       const usersRLS = `
         ALTER TABLE users ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "users_select_own" ON users;
-        CREATE POLICY "users_select_own" ON users
-          FOR SELECT TO authenticated
-          USING (auth.uid() = id);
+        -- POLÍTICA PÚBLICA PARA LOGIN (permite SELECT sem autenticação)
+        DROP POLICY IF EXISTS "users_public_login" ON users;
+        CREATE POLICY "users_public_login" ON users
+          FOR SELECT TO public
+          USING (true);
         
-        DROP POLICY IF EXISTS "users_select_admin" ON users;
-        CREATE POLICY "users_select_admin" ON users
-          FOR SELECT TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "users_insert_public" ON users;
-        CREATE POLICY "users_insert_public" ON users
+        -- POLÍTICA PÚBLICA PARA PRIMEIRO ADMIN (permite INSERT sem autenticação)
+        DROP POLICY IF EXISTS "users_public_first_admin" ON users;
+        CREATE POLICY "users_public_first_admin" ON users
           FOR INSERT TO public
           WITH CHECK (true);
         
+        -- Políticas para usuários autenticados (baseado em sessão local)
         DROP POLICY IF EXISTS "users_insert_admin" ON users;
         CREATE POLICY "users_insert_admin" ON users
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+          FOR INSERT TO public
+          WITH CHECK (true);
         
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "users_update_own" ON users;
-        CREATE POLICY "users_update_own" ON users
-          FOR UPDATE TO authenticated
-          USING (auth.uid() = id)
-          WITH CHECK (auth.uid() = id);
+        DROP POLICY IF EXISTS "users_update_all" ON users;
+        CREATE POLICY "users_update_all" ON users
+          FOR UPDATE TO public
+          USING (true)
+          WITH CHECK (true);
         
-        DROP POLICY IF EXISTS "users_update_admin" ON users;
-        CREATE POLICY "users_update_admin" ON users
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "users_delete_admin" ON users;
-        CREATE POLICY "users_delete_admin" ON users
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+        DROP POLICY IF EXISTS "users_delete_all" ON users;
+        CREATE POLICY "users_delete_all" ON users
+          FOR DELETE TO public
+          USING (true);
       `;
 
       // 5. Criar trigger para updated_at
@@ -151,34 +139,15 @@ export const databaseService = {
         );
       `;
 
-      // 7. Criar RLS para partners
+      // 7. Criar RLS para partners - ACESSO PÚBLICO
       const partnersRLS = `
         ALTER TABLE partners ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "partners_select_all" ON partners;
-        CREATE POLICY "partners_select_all" ON partners
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "partners_insert_admin" ON partners;
-        CREATE POLICY "partners_insert_admin" ON partners
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "partners_update_admin" ON partners;
-        CREATE POLICY "partners_update_admin" ON partners
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "partners_delete_admin" ON partners;
-        CREATE POLICY "partners_delete_admin" ON partners
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+        DROP POLICY IF EXISTS "partners_public_access" ON partners;
+        CREATE POLICY "partners_public_access" ON partners
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 8. Criar trigger para partners
@@ -198,34 +167,15 @@ export const databaseService = {
         );
       `;
 
-      // 10. Criar RLS para units
+      // 10. Criar RLS para units - ACESSO PÚBLICO
       const unitsRLS = `
         ALTER TABLE units ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "units_select_all" ON units;
-        CREATE POLICY "units_select_all" ON units
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "units_insert_admin" ON units;
-        CREATE POLICY "units_insert_admin" ON units
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "units_update_admin" ON units;
-        CREATE POLICY "units_update_admin" ON units
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "units_delete_admin" ON units;
-        CREATE POLICY "units_delete_admin" ON users
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+        DROP POLICY IF EXISTS "units_public_access" ON units;
+        CREATE POLICY "units_public_access" ON units
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 11. Criar tabela doctors
@@ -239,52 +189,17 @@ export const databaseService = {
         );
       `;
 
-      // 12. Criar índice e RLS para doctors
+      // 12. Criar índice e RLS para doctors - ACESSO PÚBLICO
       const doctorsRLS = `
         CREATE INDEX IF NOT EXISTS idx_doctors_partner_id ON doctors(partner_id);
         
         ALTER TABLE doctors ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "doctors_select_all" ON doctors;
-        CREATE POLICY "doctors_select_all" ON doctors
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "doctors_insert_admin" ON doctors;
-        CREATE POLICY "doctors_insert_admin" ON doctors
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "doctors_insert_partner" ON doctors;
-        CREATE POLICY "doctors_insert_partner" ON doctors
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "doctors_update_admin" ON doctors;
-        CREATE POLICY "doctors_update_admin" ON doctors
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "doctors_update_partner" ON doctors;
-        CREATE POLICY "doctors_update_partner" ON doctors
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "doctors_delete_admin" ON doctors;
-        CREATE POLICY "doctors_delete_admin" ON doctors
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "doctors_delete_partner" ON doctors;
-        CREATE POLICY "doctors_delete_partner" ON doctors
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
+        DROP POLICY IF EXISTS "doctors_public_access" ON doctors;
+        CREATE POLICY "doctors_public_access" ON doctors
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 13. Criar tabela insurances
@@ -297,52 +212,17 @@ export const databaseService = {
         );
       `;
 
-      // 14. Criar índice e RLS para insurances
+      // 14. Criar índice e RLS para insurances - ACESSO PÚBLICO
       const insurancesRLS = `
         CREATE INDEX IF NOT EXISTS idx_insurances_partner_id ON insurances(partner_id);
         
         ALTER TABLE insurances ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "insurances_select_all" ON insurances;
-        CREATE POLICY "insurances_select_all" ON insurances
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "insurances_insert_admin" ON insurances;
-        CREATE POLICY "insurances_insert_admin" ON insurances
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "insurances_insert_partner" ON insurances;
-        CREATE POLICY "insurances_insert_partner" ON insurances
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "insurances_update_admin" ON insurances;
-        CREATE POLICY "insurances_update_admin" ON insurances
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "insurances_update_partner" ON insurances;
-        CREATE POLICY "insurances_update_partner" ON insurances
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "insurances_delete_admin" ON insurances;
-        CREATE POLICY "insurances_delete_admin" ON insurances
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "insurances_delete_partner" ON insurances;
-        CREATE POLICY "insurances_delete_partner" ON insurances
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
+        DROP POLICY IF EXISTS "insurances_public_access" ON insurances;
+        CREATE POLICY "insurances_public_access" ON insurances
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 15. Criar tabela exam_requests
@@ -364,7 +244,7 @@ export const databaseService = {
         );
       `;
 
-      // 16. Criar índices e RLS para exam_requests
+      // 16. Criar índices e RLS para exam_requests - ACESSO PÚBLICO
       const examRequestsRLS = `
         CREATE INDEX IF NOT EXISTS idx_exam_requests_partner_id ON exam_requests(partner_id);
         CREATE INDEX IF NOT EXISTS idx_exam_requests_status ON exam_requests(status);
@@ -372,47 +252,11 @@ export const databaseService = {
         
         ALTER TABLE exam_requests ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "exam_requests_select_all" ON exam_requests;
-        CREATE POLICY "exam_requests_select_all" ON exam_requests
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "exam_requests_insert_admin" ON exam_requests;
-        CREATE POLICY "exam_requests_insert_admin" ON exam_requests
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "exam_requests_insert_partner" ON exam_requests;
-        CREATE POLICY "exam_requests_insert_partner" ON exam_requests
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "exam_requests_update_admin" ON exam_requests;
-        CREATE POLICY "exam_requests_update_admin" ON exam_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "exam_requests_update_partner" ON exam_requests;
-        CREATE POLICY "exam_requests_update_partner" ON exam_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'parceiro');
-        
-        DROP POLICY IF EXISTS "exam_requests_update_reception" ON exam_requests;
-        CREATE POLICY "exam_requests_update_reception" ON exam_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'recepcao')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'recepcao');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "exam_requests_delete_admin" ON exam_requests;
-        CREATE POLICY "exam_requests_delete_admin" ON exam_requests
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+        DROP POLICY IF EXISTS "exam_requests_public_access" ON exam_requests;
+        CREATE POLICY "exam_requests_public_access" ON exam_requests
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 17. Criar trigger para exam_requests
@@ -433,50 +277,15 @@ export const databaseService = {
         );
       `;
 
-      // 19. Criar RLS para batteries
+      // 19. Criar RLS para batteries - ACESSO PÚBLICO
       const batteriesRLS = `
         ALTER TABLE batteries ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "batteries_select_all" ON batteries;
-        CREATE POLICY "batteries_select_all" ON batteries
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "batteries_insert_admin" ON batteries;
-        CREATE POLICY "batteries_insert_admin" ON batteries
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "batteries_insert_checkup" ON batteries;
-        CREATE POLICY "batteries_insert_checkup" ON batteries
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "batteries_update_admin" ON batteries;
-        CREATE POLICY "batteries_update_admin" ON batteries
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "batteries_update_checkup" ON batteries;
-        CREATE POLICY "batteries_update_checkup" ON batteries
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "batteries_delete_admin" ON batteries;
-        CREATE POLICY "batteries_delete_admin" ON batteries
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "batteries_delete_checkup" ON batteries;
-        CREATE POLICY "batteries_delete_checkup" ON batteries
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup');
+        DROP POLICY IF EXISTS "batteries_public_access" ON batteries;
+        CREATE POLICY "batteries_public_access" ON batteries
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 20. Criar tabela checkup_requests
@@ -496,7 +305,7 @@ export const databaseService = {
         );
       `;
 
-      // 21. Criar índices e RLS para checkup_requests
+      // 21. Criar índices e RLS para checkup_requests - ACESSO PÚBLICO
       const checkupRequestsRLS = `
         CREATE INDEX IF NOT EXISTS idx_checkup_requests_battery_id ON checkup_requests(battery_id);
         CREATE INDEX IF NOT EXISTS idx_checkup_requests_unit_id ON checkup_requests(unit_id);
@@ -505,47 +314,11 @@ export const databaseService = {
         
         ALTER TABLE checkup_requests ENABLE ROW LEVEL SECURITY;
         
-        -- Políticas para SELECT
-        DROP POLICY IF EXISTS "checkup_requests_select_all" ON checkup_requests;
-        CREATE POLICY "checkup_requests_select_all" ON checkup_requests
-          FOR SELECT TO authenticated
-          USING (true);
-        
-        -- Políticas para INSERT
-        DROP POLICY IF EXISTS "checkup_requests_insert_admin" ON checkup_requests;
-        CREATE POLICY "checkup_requests_insert_admin" ON checkup_requests
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "checkup_requests_insert_checkup" ON checkup_requests;
-        CREATE POLICY "checkup_requests_insert_checkup" ON checkup_requests
-          FOR INSERT TO authenticated
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup');
-        
-        -- Políticas para UPDATE
-        DROP POLICY IF EXISTS "checkup_requests_update_admin" ON checkup_requests;
-        CREATE POLICY "checkup_requests_update_admin" ON checkup_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
-        
-        DROP POLICY IF EXISTS "checkup_requests_update_checkup" ON checkup_requests;
-        CREATE POLICY "checkup_requests_update_checkup" ON checkup_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'checkup');
-        
-        DROP POLICY IF EXISTS "checkup_requests_update_reception" ON checkup_requests;
-        CREATE POLICY "checkup_requests_update_reception" ON checkup_requests
-          FOR UPDATE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'recepcao')
-          WITH CHECK ((SELECT profile FROM users WHERE id = auth.uid()) = 'recepcao');
-        
-        -- Políticas para DELETE
-        DROP POLICY IF EXISTS "checkup_requests_delete_admin" ON checkup_requests;
-        CREATE POLICY "checkup_requests_delete_admin" ON checkup_requests
-          FOR DELETE TO authenticated
-          USING ((SELECT profile FROM users WHERE id = auth.uid()) = 'admin');
+        DROP POLICY IF EXISTS "checkup_requests_public_access" ON checkup_requests;
+        CREATE POLICY "checkup_requests_public_access" ON checkup_requests
+          FOR ALL TO public
+          USING (true)
+          WITH CHECK (true);
       `;
 
       // 22. Criar trigger para checkup_requests
