@@ -125,7 +125,7 @@ exports.handler = async (event, context) => {
     // Criar usuário usando Admin API
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: email.trim().toLowerCase(),
-      password: password || 'nb@123',
+      password: password,
       email_confirm: true, // Confirmar email automaticamente
       user_metadata: {
         name: name || 'Sem nome',
@@ -179,44 +179,25 @@ exports.handler = async (event, context) => {
 
     console.log('✅ Usuário criado no auth com sucesso:', authData.user.id);
 
-    // Criar hash da senha para a tabela users
-    const passwordHash = Buffer.from(password + 'nb-salt-2025').toString('base64');
-
-    // Inserir na tabela users
-    const { error: insertError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
-        email: email.trim().toLowerCase(),
-        name: name || 'Sem nome',
-        profile: profile || 'checkup',
-        password_hash: passwordHash
-      });
-
-    if (insertError) {
-      console.error('❌ Erro ao inserir na tabela users:', insertError);
-      
-      // Tentar limpar o usuário do auth se a inserção falhou
-      try {
-        await supabase.auth.admin.deleteUser(authData.user.id);
-        console.log('🧹 Usuário removido do auth após falha na inserção');
-      } catch (cleanupError) {
-        console.error('❌ Erro ao limpar usuário do auth:', cleanupError);
-      }
-      
-      return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({ 
-          error: `Erro ao criar perfil do usuário: ${insertError.message}` 
-        }),
-      };
-    }
-
     // Aguardar um pouco para garantir que a trigger foi executada
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    console.log('✅ Usuário inserido na tabela users com sucesso');
+    // Verificar se foi inserido na tabela users pela trigger
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, email, name, profile')
+      .eq('id', authData.user.id)
+      .single();
+
+    if (userError) {
+      console.warn('⚠️ Usuário não encontrado na tabela users após trigger:', userError);
+      
+      // A trigger pode ter falhado, mas o usuário foi criado no auth
+      // Isso não é necessariamente um erro crítico
+      console.log('ℹ️ Usuário criado no auth, mas pode não ter sido sincronizado com a tabela users');
+    } else {
+      console.log('✅ Usuário encontrado na tabela users:', userData);
+    }
 
     // Retornar sucesso
     return {

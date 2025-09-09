@@ -6,15 +6,15 @@ Sistema de gestão de exames e check-ups médicos desenvolvido com React, TypeSc
 
 ### 1. Configurar Variáveis de Ambiente para Netlify
 
-Configure as seguintes variáveis de ambiente no Netlify (Site settings > Environment variables):
+Configure as seguintes variáveis de ambiente no Netlify (Site settings > Build & deploy > Environment variables):
 
 #### Variáveis obrigatórias:
 
 ```env
-# URL do projeto Supabase (para frontend e backend)
+# URL do projeto Supabase (exposta no frontend)
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 
-# Chave anônima (para frontend)
+# Chave anônima (exposta no frontend)
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 # Chave de Service Role (APENAS para Netlify Functions - nunca expor no frontend)
@@ -30,7 +30,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 2. Configurar Banco de Dados
 
-Execute a migration para criar a função e trigger automáticas:
+Execute a migration no SQL Editor do Supabase para criar a função e trigger automáticas:
 
 ```sql
 -- No SQL Editor do Supabase, execute o conteúdo do arquivo:
@@ -40,6 +40,11 @@ Execute a migration para criar a função e trigger automáticas:
 Isso criará:
 - Função `handle_new_user()` que sincroniza auth.users com public.users
 - Trigger `on_auth_user_created` que executa automaticamente
+- Tabela `public.users` com estrutura correta
+- Políticas RLS para segurança
+- Índices para performance
+
+**Importante:** Execute esta migration antes de criar usuários no sistema.
 
 ### 2. Instalar Dependências
 
@@ -56,6 +61,24 @@ npm run dev
 ## 🔧 Ferramentas de Debug
 
 O sistema inclui ferramentas de debug para diagnosticar problemas de autenticação:
+
+### Testando a Netlify Function
+
+Após configurar as variáveis de ambiente, você pode testar a função de criação de usuários:
+
+```javascript
+// Exemplo de uso da função create-user
+fetch('/.netlify/functions/create-user', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'teste@exemplo.com',
+    password: 'senha123',
+    name: 'Usuário Teste',
+    profile: 'admin'
+  })
+})
+```
 
 ### No Console do Navegador (F12):
 
@@ -84,12 +107,32 @@ Para testes rápidos, o sistema inclui credenciais de desenvolvimento:
 
 ## 📋 Funcionalidades
 
+### Sistema de Usuários
+- **Criação automática:** Usuários criados em `auth.users` são automaticamente sincronizados com `public.users`
+- **Metadados:** Nome e perfil são extraídos dos `user_metadata`
+- **Valores padrão:** Nome padrão "Sem nome" e perfil padrão "checkup"
+- **Netlify Functions:** Endpoint serverless para criação de usuários via API
+
+### Perfis de Acesso
 - **Administrador:** Gestão completa do sistema
 - **Parceiro:** Encaminhamento de exames
 - **Recepção:** Acompanhamento de pedidos
 - **Check-up:** Gestão de baterias e solicitações
 
 ## 🛠️ Resolução de Problemas
+
+### Erro na Sincronização de Usuários
+
+1. Verifique se a migration foi executada corretamente
+2. Confirme que a função `handle_new_user()` existe
+3. Verifique se o trigger `on_auth_user_created` está ativo
+4. Execute no SQL Editor: `SELECT * FROM information_schema.triggers WHERE trigger_name = 'on_auth_user_created';`
+
+### Problemas com Netlify Functions
+
+1. Verifique se as variáveis de ambiente estão configuradas no Netlify
+2. Confirme que `SUPABASE_SERVICE_ROLE_KEY` está definida (não exposta no frontend)
+3. Teste a função localmente com `netlify dev`
 
 ### Erro 400 no Login
 

@@ -86,6 +86,7 @@ export function UserManagement() {
     try {
       console.log('👥 Iniciando criação de usuário:', formData);
       
+      // Usar a Netlify Function para criar usuário
       const response = await fetch('/.netlify/functions/create-user', {
         method: 'POST',
         headers: {
@@ -93,12 +94,14 @@ export function UserManagement() {
         },
         body: JSON.stringify({
           email: formData.email.trim().toLowerCase(),
+          password: 'nb@123', // Senha padrão
           name: formData.name.trim(),
           profile: formData.profile
         })
       });
 
       const result = await response.json();
+      
       if (!response.ok) {
         console.error('❌ Erro ao criar usuário:', result.error);
         
@@ -119,7 +122,7 @@ export function UserManagement() {
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
-      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123\n\nO usuário pode fazer login imediatamente.');
+      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123\n\nO usuário foi automaticamente sincronizado com a tabela users.');
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
       alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');

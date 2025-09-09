@@ -3,12 +3,12 @@ export const envValidator = {
   validate(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
     
-    // Verificar se as variáveis existem (compatível com Netlify)
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Verificar variáveis de ambiente do Netlify
+    const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
     
     if (!supabaseUrl) {
-      errors.push('❌ VITE_SUPABASE_URL não está definida');
+      errors.push('❌ NEXT_PUBLIC_SUPABASE_URL não está definida');
     } else {
       // Validar formato da URL
       try {
@@ -18,18 +18,18 @@ export const envValidator = {
         }
         console.log('✅ URL do Supabase válida:', url.origin);
       } catch (error) {
-        errors.push('❌ VITE_SUPABASE_URL tem formato inválido');
+        errors.push('❌ NEXT_PUBLIC_SUPABASE_URL tem formato inválido');
       }
     }
     
     if (!supabaseKey) {
-      errors.push('❌ VITE_SUPABASE_ANON_KEY não está definida');
+      errors.push('❌ NEXT_PUBLIC_SUPABASE_ANON_KEY não está definida');
     } else {
       // Validar formato da chave (deve ser um JWT)
       if (!supabaseKey.startsWith('eyJ')) {
-        errors.push('❌ VITE_SUPABASE_ANON_KEY não parece ser um JWT válido');
-      } else if (supabaseKey.includes('EXEMPLO_SUBSTITUA_PELA_CHAVE_REAL')) {
-        errors.push('⚠️ VITE_SUPABASE_ANON_KEY ainda é a chave de exemplo - substitua pela chave real do seu projeto');
+        errors.push('❌ NEXT_PUBLIC_SUPABASE_ANON_KEY não parece ser um JWT válido');
+      } else if (supabaseKey.includes('seu-projeto')) {
+        errors.push('⚠️ NEXT_PUBLIC_SUPABASE_ANON_KEY ainda é a chave de exemplo - substitua pela chave real do seu projeto');
       } else {
         console.log('✅ Chave anônima do Supabase presente e com formato correto');
         console.log('🔑 Primeiros 30 caracteres:', supabaseKey.substring(0, 30) + '...');
@@ -38,17 +38,17 @@ export const envValidator = {
     
     // Verificar se há espaços em branco ou caracteres especiais
     if (supabaseUrl && (supabaseUrl !== supabaseUrl.trim())) {
-      errors.push('⚠️ VITE_SUPABASE_URL contém espaços em branco no início ou fim');
+      errors.push('⚠️ NEXT_PUBLIC_SUPABASE_URL contém espaços em branco no início ou fim');
     }
     
     if (supabaseKey && (supabaseKey !== supabaseKey.trim())) {
-      errors.push('⚠️ VITE_SUPABASE_ANON_KEY contém espaços em branco no início ou fim');
+      errors.push('⚠️ NEXT_PUBLIC_SUPABASE_ANON_KEY contém espaços em branco no início ou fim');
     }
     
-    // Log de todas as variáveis de ambiente relacionadas ao Vite
-    console.log('📋 Todas as variáveis VITE_* disponíveis:');
+    // Log de todas as variáveis de ambiente relacionadas ao projeto
+    console.log('📋 Variáveis de ambiente disponíveis:');
     Object.keys(import.meta.env).forEach(key => {
-      if (key.startsWith('VITE_')) {
+      if (key.startsWith('VITE_') || key.startsWith('NEXT_PUBLIC_')) {
         const value = import.meta.env[key];
         if (key.includes('KEY') || key.includes('SECRET')) {
           console.log(`- ${key}: ${value ? value.substring(0, 20) + '...' : 'undefined'}`);
@@ -74,8 +74,8 @@ export const envValidator = {
     }
     
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
       
       console.log('🔄 Testando conectividade com Supabase...');
       
@@ -103,12 +103,12 @@ export const envValidator = {
       } else if (response.status === 401) {
         return {
           success: false,
-          error: 'Chave API inválida ou expirada. Verifique VITE_SUPABASE_ANON_KEY no arquivo .env'
+          error: 'Chave API inválida ou expirada. Verifique NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente'
         };
       } else if (response.status === 404) {
         return {
           success: false,
-          error: 'URL do projeto Supabase não encontrada. Verifique VITE_SUPABASE_URL no arquivo .env'
+          error: 'URL do projeto Supabase não encontrada. Verifique NEXT_PUBLIC_SUPABASE_URL nas variáveis de ambiente'
         };
       } else {
         const errorText = await response.text();
@@ -157,7 +157,7 @@ if (import.meta.env.DEV) {
           console.log('✅ Teste de conectividade passou');
         } else {
           console.warn('⚠️ Teste de conectividade falhou:', result.error);
-          console.log('💡 Dica: Verifique se as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY estão corretas no arquivo .env');
+          console.log('💡 Dica: Verifique se as variáveis NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY estão corretas nas variáveis de ambiente');
         }
       })
       .catch(error => {
