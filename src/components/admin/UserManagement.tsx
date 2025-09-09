@@ -36,13 +36,27 @@ export function UserManagement() {
         .select('id, email, name, profile, created_at, updated_at')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao carregar usuários:', error);
-        // Não mostrar erro para o usuário, apenas logar
-        setUsers([]);
-        return;
-      }
       
+      // Usar a função createUser do contexto de autenticação
+      const response = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          name: name.trim(),
+          profile: profile
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('❌ Erro na criação:', result.error);
+        return { error: result.error || 'Erro ao criar usuário' };
+      }
+        console.error('❌ Erro ao carregar usuários:', error);
       console.log('✅ Usuários carregados:', data?.length || 0);
       setUsers(data || []);
     } catch (error) {
@@ -72,20 +86,27 @@ export function UserManagement() {
     try {
       console.log('👥 Iniciando criação de usuário:', formData);
       
-      const { error } = await createUser(
-        formData.email,
-        formData.name.trim(),
-        formData.profile
-      );
+      const response = await fetch('/.netlify/functions/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email.trim().toLowerCase(),
+          name: formData.name.trim(),
+          profile: formData.profile
+        })
+      });
 
-      if (error) {
-        console.error('❌ Erro ao criar usuário:', error);
+      const result = await response.json();
+      if (!response.ok) {
+        console.error('❌ Erro ao criar usuário:', result.error);
         
         // Mostrar erro mais amigável
-        if (error.includes('já está cadastrado') || error.includes('already registered')) {
+        if (result.error && (result.error.includes('já está cadastrado') || result.error.includes('already registered'))) {
           alert('Este email já está cadastrado no sistema.');
         } else {
-          alert(`Erro ao criar usuário: ${error}`);
+          alert(`Erro ao criar usuário: ${result.error || 'Erro desconhecido'}`);
         }
         return;
       }

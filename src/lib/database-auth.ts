@@ -34,23 +34,39 @@ export const databaseAuth = {
   async signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
     try {
       if (!supabase) {
-        return { user: null, error: 'Sistema não configurado' };
+        console.error('❌ Supabase não configurado');
+        return { user: null, error: 'Sistema não configurado. Verifique as variáveis de ambiente.' };
       }
 
       console.log('🔐 Tentando login via banco de dados:', email);
 
+      // Validar entrada
+      if (!email || !password) {
+        return { user: null, error: 'Email e senha são obrigatórios' };
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+      
+      if (!normalizedEmail.includes('@')) {
+        return { user: null, error: 'Email deve ter formato válido' };
+      }
       // Buscar usuário na tabela users
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('id, email, name, profile, password_hash')
-        .eq('email', email.trim().toLowerCase())
+        .eq('email', normalizedEmail)
         .single();
 
       if (userError || !userData) {
-        console.log('❌ Usuário não encontrado:', userError?.message);
+        console.log('❌ Usuário não encontrado ou erro na consulta:', userError?.message);
         return { user: null, error: 'Email ou senha incorretos' };
       }
 
+      // Verificar se o usuário tem password_hash
+      if (!userData.password_hash) {
+        console.log('❌ Usuário sem senha definida');
+        return { user: null, error: 'Usuário sem senha definida. Entre em contato com o administrador.' };
+      }
       // Verificar senha
       if (!verifyPassword(password, userData.password_hash)) {
         console.log('❌ Senha incorreta');
@@ -73,7 +89,7 @@ export const databaseAuth = {
       return { user, error: null };
     } catch (error) {
       console.error('❌ Erro no login:', error);
-      return { user: null, error: 'Erro interno do sistema' };
+      return { user: null, error: 'Erro interno do sistema. Verifique sua conexão com o banco de dados.' };
     }
   },
 

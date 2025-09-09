@@ -24,27 +24,26 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     // Validação no frontend
     if (!email.trim() || !password.trim()) {
       setError('Email e senha são obrigatórios');
-      setLoading(false);
       return;
     }
     
     if (!email.includes('@')) {
       setError('Email deve ter formato válido');
-      setLoading(false);
       return;
     }
+    
+    setLoading(true);
     
     // Timeout para evitar loading infinito
     const timeoutId = setTimeout(() => {
       setLoading(false);
       setError('Timeout: Login demorou muito para responder. Tente novamente.');
-    }, 15000); // 15 segundos
+    }, 10000); // 10 segundos
     
     try {
       console.log('🔐 Iniciando processo de login...');

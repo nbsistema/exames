@@ -49,11 +49,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [initializeAuth]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    console.log('🔐 Iniciando processo de login via banco...');
+    
+    // Validação básica
+    if (!email.trim() || !password.trim()) {
+      return { error: 'Email e senha são obrigatórios' };
+    }
+    
+    if (!email.includes('@')) {
+      return { error: 'Email deve ter formato válido' };
+    }
+    
     setLoading(true);
     
     try {
-      console.log('🔐 Iniciando processo de login via banco...');
-      
       const { user: loggedUser, error } = await databaseAuth.signIn(email, password);
       
       if (error) {
@@ -70,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: 'Erro desconhecido no login' };
     } catch (error) {
       console.error('❌ Erro interno no login:', error);
-      return { error: 'Erro interno do sistema' };
+      return { error: 'Erro interno do sistema. Verifique sua conexão.' };
     } finally {
       setLoading(false);
     }
