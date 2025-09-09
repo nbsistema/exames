@@ -355,10 +355,11 @@ export function LoginForm() {
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
               <strong>Importante:</strong> 
-              <br />• <strong>Sistema de login via banco de dados</strong>
-              <br />• Os usuários são armazenados na tabela public.users
+              <br />• <strong>Sistema híbrido de autenticação</strong>
+              <br />• Usuários existentes do Supabase Auth funcionam normalmente
+              <br />• Novos usuários são salvos na tabela public.users
               <br />• Senha padrão para novos usuários: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-              <br />• As senhas são criptografadas automaticamente
+              <br />• Migração automática de usuários existentes
               <br />• Sessões duram 24 horas
             </p>
           </div>

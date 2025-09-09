@@ -10,12 +10,12 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(
   supabaseUrl.trim(),
   supabaseAnonKey.trim(),
   {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false, // Desabilitar para evitar conflitos
-    debug: false, // Desabilitar debug para evitar logs desnecessários
-  },
+    auth: {
+      persistSession: false, // Não persistir sessão do Supabase Auth
+      autoRefreshToken: false, // Não renovar tokens automaticamente
+      detectSessionInUrl: false, // Desabilitar para evitar conflitos
+      debug: false, // Desabilitar debug para evitar logs desnecessários
+    },
 }) : null;
 
 // Criar cliente admin apenas se a service role key estiver disponível

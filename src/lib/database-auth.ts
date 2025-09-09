@@ -51,6 +51,7 @@ export const databaseAuth = {
         return { user: null, error: 'Sistema não configurado. Verifique as variáveis de ambiente.' };
       }
 
+      // Primeiro, tentar buscar usuário na tabela users (sistema novo)
       // Buscar usuário na tabela users
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -59,15 +60,121 @@ export const databaseAuth = {
         .single();
 
       if (userError || !userData) {
-        console.log('❌ Usuário não encontrado ou erro na consulta:', userError?.message);
-        return { user: null, error: 'Email ou senha incorretos' };
+        console.log('⚠️ Usuário não encontrado na tabela users, tentando buscar usuário do Supabase Auth...');
+        
+        // Se não encontrou na tabela users, tentar buscar no auth.users via admin
+        try {
+          // Tentar fazer login via Supabase Auth para verificar credenciais
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: password
+          });
+          
+          if (authError || !authData.user) {
+            console.log('❌ Credenciais inválidas no Supabase Auth:', authError?.message);
+            return { user: null, error: 'Email ou senha incorretos' };
+          }
+          
+          console.log('✅ Usuário autenticado via Supabase Auth:', authData.user.email);
+          
+          // Migrar usuário para a tabela users
+          const userProfile = authData.user.user_metadata?.profile || 'checkup';
+          const userName = authData.user.user_metadata?.name || authData.user.email?.split('@')[0] || 'Usuário';
+          
+          console.log('🔄 Migrando usuário para tabela users...');
+          
+          // Criar hash da senha para salvar na tabela
+          const passwordHash = hashPassword(password);
+          
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: authData.user.id,
+              email: normalizedEmail,
+              name: userName,
+              profile: userProfile,
+              password_hash: passwordHash,
+            });
+          
+          if (insertError) {
+            console.warn('⚠️ Erro ao migrar usuário para tabela users:', insertError.message);
+            // Continuar mesmo com erro de migração
+          } else {
+            console.log('✅ Usuário migrado com sucesso para tabela users');
+          }
+          
+          // Fazer logout do Supabase Auth (não queremos manter sessão lá)
+          await supabase.auth.signOut();
+          
+          const user: AuthUser = {
+            id: authData.user.id,
+            email: authData.user.email!,
+            name: userName,
+            profile: userProfile as UserProfile,
+          };
+
+          // Salvar no localStorage para manter sessão
+          localStorage.setItem('nb-auth-user', JSON.stringify(user));
+          localStorage.setItem('nb-auth-timestamp', Date.now().toString());
+
+          return { user, error: null };
+          
+        } catch (authError) {
+          console.log('❌ Erro na autenticação via Supabase Auth:', authError);
+          return { user: null, error: 'Email ou senha incorretos' };
+        }
       }
 
       // Verificar se o usuário tem password_hash
       if (!userData.password_hash) {
-        console.log('❌ Usuário sem senha definida');
-        return { user: null, error: 'Usuário sem senha definida. Entre em contato com o administrador.' };
+        console.log('⚠️ Usuário sem senha definida na tabela, tentando autenticar via Supabase Auth...');
+        
+        // Tentar autenticar via Supabase Auth e definir senha
+        try {
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: password
+          });
+          
+          if (authError || !authData.user) {
+            return { user: null, error: 'Email ou senha incorretos' };
+          }
+          
+          // Atualizar usuário com hash da senha
+          const passwordHash = hashPassword(password);
+          
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ password_hash: passwordHash })
+            .eq('id', userData.id);
+          
+          if (updateError) {
+            console.warn('⚠️ Erro ao atualizar senha do usuário:', updateError.message);
+          } else {
+            console.log('✅ Senha do usuário atualizada com sucesso');
+          }
+          
+          // Fazer logout do Supabase Auth
+          await supabase.auth.signOut();
+          
+          const user: AuthUser = {
+            id: userData.id,
+            email: userData.email,
+            name: userData.name,
+            profile: userData.profile as UserProfile,
+          };
+
+          // Salvar no localStorage para manter sessão
+          localStorage.setItem('nb-auth-user', JSON.stringify(user));
+          localStorage.setItem('nb-auth-timestamp', Date.now().toString());
+
+          return { user, error: null };
+          
+        } catch (authError) {
+          return { user: null, error: 'Email ou senha incorretos' };
+        }
       }
+      
       // Verificar senha
       if (!verifyPassword(password, userData.password_hash)) {
         console.log('❌ Senha incorreta');
