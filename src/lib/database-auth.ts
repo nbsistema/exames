@@ -209,11 +209,6 @@ export const databaseAuth = {
       }
 
       console.log('👥 Criando usuário no banco:', { email, name, profile });
-      if (!supabase) {
-        return { error: 'Sistema não configurado' };
-      }
-
-      console.log('👥 Criando usuário no banco:', { email, name, profile });
 
       const normalizedEmail = email.trim().toLowerCase();
 
@@ -235,7 +230,7 @@ export const databaseAuth = {
       const { error: insertError } = await supabase
         .from('users')
         .insert({
-          id: crypto.randomUUID(),
+          id: self.crypto.randomUUID(),
           email: normalizedEmail,
           name: name.trim(),
           profile: profile,
@@ -292,11 +287,6 @@ export const databaseAuth = {
   // Criar primeiro admin
   async createFirstAdmin(email: string, name: string, password: string): Promise<{ error: string | null }> {
     try {
-      if (!supabase) {
-        return { error: 'Sistema não configurado' };
-      }
-
-      console.log('👑 Criando primeiro administrador');
       if (!supabase) {
         return { error: 'Sistema não configurado' };
       }

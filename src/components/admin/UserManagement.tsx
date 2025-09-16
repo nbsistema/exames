@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { supabase, supabaseAdmin, AppUser, UserProfile } from '../../lib/supabase';
-import { authService } from '../../lib/auth';
+import { databaseAuth } from '../../lib/database-auth';
 
 export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -57,8 +57,11 @@ export function UserManagement() {
         return { error: result.error || 'Erro ao criar usuário' };
       }
         console.error('❌ Erro ao carregar usuários:', error);
-      console.log('✅ Usuários carregados:', data?.length || 0);
-      setUsers(data || []);
+        setUsers([]);
+      } else {
+        console.log('✅ Usuários carregados:', data?.length || 0);
+        setUsers(data || []);
+      }
     } catch (error) {
       console.error('❌ Erro interno ao carregar usuários:', error);
       setUsers([]);
@@ -86,43 +89,26 @@ export function UserManagement() {
     try {
       console.log('👥 Iniciando criação de usuário:', formData);
       
-      // Usar a Netlify Function para criar usuário
-      const response = await fetch('/.netlify/functions/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email.trim().toLowerCase(),
-          password: 'nb@123', // Senha padrão
-          name: formData.name.trim(),
-          profile: formData.profile
-        })
-      });
-
-      const result = await response.json();
+      // Usar o sistema de autenticação via banco de dados
+      const { error } = await databaseAuth.createUser(
+        formData.email.trim().toLowerCase(),
+        formData.name.trim(),
+        formData.profile,
+        'nb@123' // Senha padrão
+      );
       
-      if (!response.ok) {
-        console.error('❌ Erro ao criar usuário:', result.error);
-        
-        // Mostrar erro mais amigável
-        if (result.error && (result.error.includes('já está cadastrado') || result.error.includes('already registered'))) {
-          alert('Este email já está cadastrado no sistema.');
-        } else {
-          alert(`Erro ao criar usuário: ${result.error || 'Erro desconhecido'}`);
-        }
+      if (error) {
+        console.error('❌ Erro ao criar usuário:', error);
+        alert(`Erro ao criar usuário: ${error}`);
         return;
       }
 
       console.log('✅ Usuário criado com sucesso');
       
-      // Aguardar um pouco antes de recarregar a lista
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
-      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123\n\nO usuário foi automaticamente sincronizado com a tabela users.');
+      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123');
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
       alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
