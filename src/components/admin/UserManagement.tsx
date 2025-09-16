@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { supabase, supabaseAdmin, AppUser, UserProfile } from '../../lib/supabase';
-import { databaseAuth } from '../../lib/database-auth';
+import { authService } from '../../lib/auth';
 
 export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -56,6 +56,8 @@ export function UserManagement() {
         console.error('❌ Erro na criação:', result.error);
         return { error: result.error || 'Erro ao criar usuário' };
       }
+
+      if (error) {
         console.error('❌ Erro ao carregar usuários:', error);
         setUsers([]);
       } else {
