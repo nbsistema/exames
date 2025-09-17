@@ -10,7 +10,6 @@ interface AppUser {
   profile: UserProfile; // sempre o do DB
   created_at: string;
   updated_at: string;
-  // campos auxiliares para diagnóstico
   _authProfile?: UserProfile | null;
   _profileMismatch?: boolean;
 }
@@ -40,8 +39,6 @@ export function UserManagement() {
 
     setLoading(true);
     try {
-      console.log('📋 Carregando usuários (auth.users + public.users)…');
-
       if (!supabaseAdmin) {
         console.error('❌ Service Role Key não configurada');
         setUsers([]);
@@ -68,33 +65,21 @@ export function UserManagement() {
         return;
       }
 
-      // 3) Combinar SEM fallback de profile (apenas DB)
+      // 3) Combinar (sem fallback para mascarar)
       const combined: AppUser[] = authUsers.users.map((au) => {
         const db = profiles?.find((p) => p.id === au.id);
         const authProfile = (au.user_metadata?.profile ?? null) as UserProfile | null;
 
-        // Preferência TOTAL ao banco (se vier errado, vamos enxergar o erro)
         const effectiveProfile = (db?.profile as UserProfile) ?? ('checkup' as UserProfile);
-
         const mismatch =
           authProfile != null &&
           db?.profile != null &&
           (authProfile as string) !== (db.profile as string);
 
-        // Diagnóstico de origem no console
-        const source = db?.profile ? 'db' : authProfile ? 'auth-only' : 'none';
-        console.log(
-          `[perfil] ${au.email} -> db=${db?.profile ?? '—'} | auth=${authProfile ?? '—'} | source=${source} | mismatch=${mismatch}`
-        );
-
         return {
           id: au.id,
           email: db?.email || au.email || '',
-          name:
-            db?.name ||
-            au.user_metadata?.name ||
-            au.email?.split('@')[0] ||
-            'Usuário',
+          name: db?.name || au.user_metadata?.name || au.email?.split('@')[0] || 'Usuário',
           profile: effectiveProfile,
           created_at: db?.created_at || au.created_at,
           updated_at: db?.updated_at || au.updated_at || au.created_at,
@@ -103,7 +88,6 @@ export function UserManagement() {
         };
       });
 
-      console.log('✅ Usuários carregados:', combined.length);
       setUsers(combined);
     } catch (error) {
       console.error('❌ Erro interno ao carregar usuários:', error);
@@ -115,7 +99,6 @@ export function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!formData.email.trim() || !formData.name.trim()) {
       alert('Email e nome são obrigatórios');
       return;
@@ -127,9 +110,6 @@ export function UserManagement() {
 
     setSubmitting(true);
     try {
-      console.log('👥 Criando usuário (auth + public.users):', formData);
-
-      // IMPORTANTE: databaseAuth.createUser deve gravar TAMBÉM em public.users
       const { error } = await databaseAuth.createUser(
         formData.email.trim().toLowerCase(),
         formData.name.trim(),
@@ -143,7 +123,6 @@ export function UserManagement() {
         return;
       }
 
-      console.log('✅ Usuário criado com sucesso');
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
@@ -165,7 +144,7 @@ export function UserManagement() {
     setFormData({
       name: user.name,
       email: user.email,
-      profile: user.profile,
+      profile: user.profile, // <- valor atual do DB, editável
     });
     setShowForm(true);
   };
@@ -176,41 +155,35 @@ export function UserManagement() {
 
     setSubmitting(true);
     try {
-      console.log('✏️ Atualizando usuário:', editingUser.id, formData);
-
-      // 1) Atualiza metadata (opcional, apenas para manter auth consistente)
-      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-        editingUser.id,
-        {
-          user_metadata: {
-            name: formData.name.trim(),
-            profile: formData.profile,
-          },
-        }
-      );
+      // 1) Atualiza metadata (para manter auth consistente com o DB)
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(editingUser.id, {
+        user_metadata: {
+          name: formData.name.trim(),
+          profile: formData.profile, // <- perfil desejado
+        },
+      });
       if (authError) {
         console.error('❌ Erro ao atualizar auth.users:', authError);
-        alert(`Erro ao atualizar usuário: ${authError.message}`);
+        alert(`Erro ao atualizar usuário (auth): ${authError.message}`);
         return;
       }
 
-      // 2) Atualiza o perfil no DB (fonte da verdade no front)
+      // 2) Atualiza na tabela public.users (fonte de verdade no front)
       const { error: profileError } = await supabase
         .from('users')
         .update({
           name: formData.name.trim(),
-          profile: formData.profile,
+          profile: formData.profile, // <- perfil desejado
           updated_at: new Date().toISOString(),
         })
         .eq('id', editingUser.id);
 
       if (profileError) {
-        console.error('❌ Erro ao atualizar perfil:', profileError);
-        alert(`Erro ao atualizar perfil: ${profileError.message}`);
+        console.error('❌ Erro ao atualizar perfil (DB):', profileError);
+        alert(`Erro ao atualizar perfil (DB): ${profileError.message}`);
         return;
       }
 
-      console.log('✅ Usuário atualizado com sucesso');
       await loadUsers();
       setShowForm(false);
       setEditingUser(null);
@@ -225,9 +198,7 @@ export function UserManagement() {
   };
 
   const handleDelete = async (userId: string, userName: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o usuário "${userName}"?`)) {
-      return;
-    }
+    if (!confirm(`Tem certeza que deseja excluir o usuário "${userName}"?`)) return;
     if (!supabaseAdmin) {
       alert('Operação não disponível - Service Role Key não configurada');
       return;
@@ -235,9 +206,6 @@ export function UserManagement() {
 
     setLoading(true);
     try {
-      console.log('🗑️ Excluindo usuário:', userId);
-
-      // 1) Remover do auth.users
       const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
       if (deleteAuthError) {
         console.error('❌ Erro ao excluir do auth.users:', deleteAuthError);
@@ -245,17 +213,11 @@ export function UserManagement() {
         return;
       }
 
-      // 2) Remover da public.users (se necessário)
-      const { error: deleteProfileError } = await supabaseAdmin
-        .from('users')
-        .delete()
-        .eq('id', userId);
-
+      const { error: deleteProfileError } = await supabaseAdmin.from('users').delete().eq('id', userId);
       if (deleteProfileError) {
         console.warn('⚠️ Erro ao excluir perfil (usuário já removido do auth):', deleteProfileError);
       }
 
-      console.log('✅ Usuário excluído com sucesso');
       await loadUsers();
       alert('Usuário excluído com sucesso!');
     } catch (error) {
@@ -327,9 +289,8 @@ export function UserManagement() {
         <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
           <AlertTriangle className="w-5 h-5 mt-0.5" />
           <div className="text-sm">
-            <strong>Atenção:</strong> Existem usuários com divergência entre o perfil do <em>auth</em> e o perfil do
-            banco. O sistema está exibindo <u>apenas</u> o perfil do banco. Ajuste os registros antigos (backfill) para
-            alinhar os dados.
+            <strong>Atenção:</strong> Existem usuários com divergência entre o perfil do <em>auth</em> e o do banco.
+            O sistema exibe o perfil do banco. Faça o backfill se necessário.
           </div>
         </div>
       )}
@@ -366,6 +327,8 @@ export function UserManagement() {
               />
               {editingUser && <p className="text-xs text-gray-500 mt-1">Email não pode ser alterado</p>}
             </div>
+
+            {/* PERFIL EDITÁVEL NA EDIÇÃO */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Perfil de Acesso</label>
               <select
@@ -378,7 +341,13 @@ export function UserManagement() {
                 <option value="checkup">Check-up</option>
                 <option value="admin">Administrador</option>
               </select>
+              {editingUser && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Selecione o perfil desejado e clique em <strong>Atualizar Usuário</strong>.
+                </p>
+              )}
             </div>
+
             <div className="md:col-span-3 flex space-x-3">
               <button
                 type="submit"
@@ -402,8 +371,7 @@ export function UserManagement() {
               <p className="text-sm text-blue-800">
                 <strong>Informações importantes:</strong>
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-                <br />• Usuário é criado no <code>auth.users</code> e em <code>public.users</code> com o perfil
-                selecionado
+                <br />• Usuário é criado no <code>auth.users</code> e em <code>public.users</code> com o perfil selecionado
                 <br />• Email confirmado automaticamente
               </p>
             </div>
@@ -467,7 +435,7 @@ export function UserManagement() {
                           onClick={() => handleEdit(user)}
                           disabled={loading || submitting}
                           className="text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
-                          title="Editar usuário"
+                          title="Editar usuário (inclui mudar perfil)"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
