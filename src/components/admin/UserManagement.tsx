@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { supabase, supabaseAdmin, AppUser, UserProfile } from '../../lib/supabase';
-import { authService } from '../../lib/auth';
+import { databaseAuth } from '../../lib/database-auth';
 
 export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -37,25 +37,13 @@ export function UserManagement() {
         .order('created_at', { ascending: false });
 
       
-      // Usar a função createUser do contexto de autenticação
-      const response = await fetch('/.netlify/functions/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          name: name.trim(),
-          profile: profile
-        })
-      });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        console.error('❌ Erro na criação:', result.error);
-        return { error: result.error || 'Erro ao criar usuário' };
-      }
+      // Usar o sistema de autenticação via banco de dados
+      const { error } = await databaseAuth.createUser(
+        formData.email.trim().toLowerCase(),
+        formData.name.trim(),
+        formData.profile,
+        'nb@123' // Senha padrão
+      );
 
       if (error) {
         console.error('❌ Erro ao carregar usuários:', error);

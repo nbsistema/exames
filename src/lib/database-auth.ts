@@ -29,6 +29,20 @@ function verifyPassword(password: string, hash: string): boolean {
   return hashPassword(password) === hash;
 }
 
+// Função para gerar UUID compatível com diferentes ambientes
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  
+  // Fallback para ambientes que não suportam crypto.randomUUID
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export const databaseAuth = {
   // Fazer login via banco de dados
   async signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
@@ -230,7 +244,7 @@ export const databaseAuth = {
       const { error: insertError } = await supabase
         .from('users')
         .insert({
-          id: self.crypto.randomUUID(),
+          id: generateUUID(),
           email: normalizedEmail,
           name: name.trim(),
           profile: profile,

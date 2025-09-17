@@ -28,9 +28,31 @@ export function LoginForm() {
     setSetupMessage('');
 
     try {
-      // Implementar lógica de setup inicial aqui
-      setSetupMessage('Setup realizado com sucesso!');
+      console.log('👑 Criando primeiro administrador:', setupData);
+      
+      const { error } = await databaseAuth.createFirstAdmin(
+        setupData.email.trim().toLowerCase(),
+        setupData.name.trim(),
+        setupData.password
+      );
+      
+      if (error) {
+        console.error('❌ Erro no setup:', error);
+        setSetupMessage(`Erro no setup: ${error}`);
+        return;
+      }
+      
+      console.log('✅ Primeiro administrador criado com sucesso');
+      setSetupMessage('Administrador criado com sucesso! Você pode fazer login agora.');
+      
+      // Aguardar um pouco e voltar para o login
+      setTimeout(() => {
+        setShowInitialSetup(false);
+        setSetupData({ name: '', email: '', password: '' });
+        setSetupMessage('');
+      }, 3000);
     } catch (error) {
+      console.error('❌ Erro interno no setup:', error);
       setSetupMessage('Erro no setup: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setSetupLoading(false);
