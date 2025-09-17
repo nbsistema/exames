@@ -36,17 +36,8 @@ export function UserManagement() {
         .select('id, email, name, profile, created_at, updated_at')
         .order('created_at', { ascending: false });
 
-      
-      // Usar o sistema de autenticação via banco de dados
-      const { error } = await databaseAuth.createUser(
-        formData.email.trim().toLowerCase(),
-        formData.name.trim(),
-        formData.profile,
-        'nb@123' // Senha padrão
-      );
-
-      if (error) {
-        console.error('❌ Erro ao carregar usuários:', error);
+      if (fetchError) {
+        console.error('❌ Erro ao carregar usuários:', fetchError);
         setUsers([]);
       } else {
         console.log('✅ Usuários carregados:', data?.length || 0);
