@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase, supabaseAdmin, UserProfile } from '../../lib/supabase';
 import { databaseAuth } from '../../lib/database-auth';
 
@@ -7,9 +7,12 @@ interface AppUser {
   id: string;
   email: string;
   name: string;
-  profile: UserProfile;
+  profile: UserProfile; // sempre o do DB
   created_at: string;
   updated_at: string;
+  // campos auxiliares para diagnóstico
+  _authProfile?: UserProfile | null;
+  _profileMismatch?: boolean;
 }
 
 export function UserManagement() {
@@ -37,50 +40,71 @@ export function UserManagement() {
 
     setLoading(true);
     try {
-      console.log('📋 Carregando usuários do auth.users + perfis...');
-      
-      // Buscar usuários do auth.users via Admin API
+      console.log('📋 Carregando usuários (auth.users + public.users)…');
+
       if (!supabaseAdmin) {
         console.error('❌ Service Role Key não configurada');
         setUsers([]);
         return;
       }
 
+      // 1) auth.users
       const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
-
       if (authError) {
-        console.error('❌ Erro ao carregar usuários do auth:', authError);
+        console.error('❌ Erro ao carregar auth.users:', authError);
         setUsers([]);
         return;
       }
 
-      // Buscar perfis da tabela public.users
+      // 2) public.users
       const { data: profiles, error: profileError } = await supabase
         .from('users')
-        .select('id, name, profile, created_at, updated_at')
+        .select('id, email, name, profile, created_at, updated_at')
         .order('created_at', { ascending: false });
 
       if (profileError) {
-        console.error('❌ Erro ao carregar perfis:', profileError);
+        console.error('❌ Erro ao carregar public.users:', profileError);
         setUsers([]);
         return;
       }
 
-      // Combinar dados do auth.users com perfis
-      const combinedUsers: AppUser[] = authUsers.users.map(authUser => {
-        const profile = profiles?.find(p => p.id === authUser.id);
+      // 3) Combinar SEM fallback de profile (apenas DB)
+      const combined: AppUser[] = authUsers.users.map((au) => {
+        const db = profiles?.find((p) => p.id === au.id);
+        const authProfile = (au.user_metadata?.profile ?? null) as UserProfile | null;
+
+        // Preferência TOTAL ao banco (se vier errado, vamos enxergar o erro)
+        const effectiveProfile = (db?.profile as UserProfile) ?? ('checkup' as UserProfile);
+
+        const mismatch =
+          authProfile != null &&
+          db?.profile != null &&
+          (authProfile as string) !== (db.profile as string);
+
+        // Diagnóstico de origem no console
+        const source = db?.profile ? 'db' : authProfile ? 'auth-only' : 'none';
+        console.log(
+          `[perfil] ${au.email} -> db=${db?.profile ?? '—'} | auth=${authProfile ?? '—'} | source=${source} | mismatch=${mismatch}`
+        );
+
         return {
-          id: authUser.id,
-          email: authUser.email!,
-          name: profile?.name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
-          profile: (profile?.profile || authUser.user_metadata?.profile || 'checkup') as UserProfile,
-          created_at: authUser.created_at,
-          updated_at: profile?.updated_at || authUser.updated_at || authUser.created_at,
+          id: au.id,
+          email: db?.email || au.email || '',
+          name:
+            db?.name ||
+            au.user_metadata?.name ||
+            au.email?.split('@')[0] ||
+            'Usuário',
+          profile: effectiveProfile,
+          created_at: db?.created_at || au.created_at,
+          updated_at: db?.updated_at || au.updated_at || au.created_at,
+          _authProfile: authProfile,
+          _profileMismatch: !!mismatch,
         };
       });
 
-      console.log('✅ Usuários carregados:', combinedUsers.length);
-      setUsers(combinedUsers);
+      console.log('✅ Usuários carregados:', combined.length);
+      setUsers(combined);
     } catch (error) {
       console.error('❌ Erro interno ao carregar usuários:', error);
       setUsers([]);
@@ -91,31 +115,28 @@ export function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validar dados antes de enviar
+
     if (!formData.email.trim() || !formData.name.trim()) {
       alert('Email e nome são obrigatórios');
       return;
     }
-    
     if (!formData.email.includes('@')) {
       alert('Email deve ter formato válido');
       return;
     }
-    
-    setSubmitting(true);
 
+    setSubmitting(true);
     try {
-      console.log('👥 Iniciando criação de usuário:', formData);
-      
-      // Usar o sistema de autenticação via banco de dados
+      console.log('👥 Criando usuário (auth + public.users):', formData);
+
+      // IMPORTANTE: databaseAuth.createUser deve gravar TAMBÉM em public.users
       const { error } = await databaseAuth.createUser(
         formData.email.trim().toLowerCase(),
         formData.name.trim(),
         formData.profile,
-        'nb@123' // Senha padrão
+        'nb@123'
       );
-      
+
       if (error) {
         console.error('❌ Erro ao criar usuário:', error);
         alert(`Erro ao criar usuário: ${error}`);
@@ -123,11 +144,14 @@ export function UserManagement() {
       }
 
       console.log('✅ Usuário criado com sucesso');
-      
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
-      alert('Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' + formData.email + '\n• Senha: nb@123');
+      alert(
+        'Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' +
+          formData.email +
+          '\n• Senha: nb@123'
+      );
     } catch (error) {
       console.error('❌ Erro interno na criação:', error);
       alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
@@ -149,35 +173,34 @@ export function UserManagement() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser || !supabase || !supabaseAdmin) return;
-    
-    setSubmitting(true);
 
+    setSubmitting(true);
     try {
       console.log('✏️ Atualizando usuário:', editingUser.id, formData);
-      
-      // 1. Atualizar user_metadata no auth.users
+
+      // 1) Atualiza metadata (opcional, apenas para manter auth consistente)
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
         editingUser.id,
         {
           user_metadata: {
             name: formData.name.trim(),
-            profile: formData.profile
-          }
+            profile: formData.profile,
+          },
         }
       );
-
       if (authError) {
         console.error('❌ Erro ao atualizar auth.users:', authError);
         alert(`Erro ao atualizar usuário: ${authError.message}`);
         return;
       }
 
-      // 2. Atualizar perfil na tabela public.users
+      // 2) Atualiza o perfil no DB (fonte da verdade no front)
       const { error: profileError } = await supabase
         .from('users')
         .update({
           name: formData.name.trim(),
           profile: formData.profile,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', editingUser.id);
 
@@ -205,27 +228,24 @@ export function UserManagement() {
     if (!confirm(`Tem certeza que deseja excluir o usuário "${userName}"?`)) {
       return;
     }
-
     if (!supabaseAdmin) {
       alert('Operação não disponível - Service Role Key não configurada');
       return;
     }
 
     setLoading(true);
-
     try {
       console.log('🗑️ Excluindo usuário:', userId);
-      
-      // 1. Remover do auth.users (isso também remove automaticamente da public.users via trigger)
-      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
+      // 1) Remover do auth.users
+      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
       if (deleteAuthError) {
         console.error('❌ Erro ao excluir do auth.users:', deleteAuthError);
         alert(`Erro ao excluir usuário: ${deleteAuthError.message}`);
         return;
       }
 
-      // 2. Remover da tabela public.users (caso não tenha trigger)
+      // 2) Remover da public.users (se necessário)
       const { error: deleteProfileError } = await supabaseAdmin
         .from('users')
         .delete()
@@ -233,7 +253,6 @@ export function UserManagement() {
 
       if (deleteProfileError) {
         console.warn('⚠️ Erro ao excluir perfil (usuário já removido do auth):', deleteProfileError);
-        // Não é crítico, pois o usuário já foi removido do auth
       }
 
       console.log('✅ Usuário excluído com sucesso');
@@ -253,11 +272,11 @@ export function UserManagement() {
     setFormData({ name: '', email: '', profile: 'parceiro' });
   };
 
-  const profileLabels = {
+  const profileLabels: Record<UserProfile, string> = {
     admin: 'Administrador',
     parceiro: 'Parceiro',
     checkup: 'Check-up',
-    recepcao: 'Recepção'
+    recepcao: 'Recepção',
   };
 
   const getProfileColor = (profile: UserProfile) => {
@@ -275,10 +294,12 @@ export function UserManagement() {
     }
   };
 
+  const hasMismatch = users.some((u) => u._profileMismatch);
+
   if (loading && users.length === 0) {
     return (
       <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -301,6 +322,17 @@ export function UserManagement() {
           <span>Novo Usuário</span>
         </button>
       </div>
+
+      {hasMismatch && (
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-900">
+          <AlertTriangle className="w-5 h-5 mt-0.5" />
+          <div className="text-sm">
+            <strong>Atenção:</strong> Existem usuários com divergência entre o perfil do <em>auth</em> e o perfil do
+            banco. O sistema está exibindo <u>apenas</u> o perfil do banco. Ajuste os registros antigos (backfill) para
+            alinhar os dados.
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -327,12 +359,12 @@ export function UserManagement() {
                 disabled={!!editingUser}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${editingUser ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  editingUser ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
                 placeholder="email@exemplo.com"
               />
-              {editingUser && (
-                <p className="text-xs text-gray-500 mt-1">Email não pode ser alterado</p>
-              )}
+              {editingUser && <p className="text-xs text-gray-500 mt-1">Email não pode ser alterado</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Perfil de Acesso</label>
@@ -353,7 +385,7 @@ export function UserManagement() {
                 disabled={submitting}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {submitting ? (editingUser ? 'Atualizando...' : 'Criando...') : (editingUser ? 'Atualizar Usuário' : 'Criar Usuário')}
+                {submitting ? (editingUser ? 'Atualizando...' : 'Criando...') : editingUser ? 'Atualizar Usuário' : 'Criar Usuário'}
               </button>
               <button
                 type="button"
@@ -370,9 +402,9 @@ export function UserManagement() {
               <p className="text-sm text-blue-800">
                 <strong>Informações importantes:</strong>
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-                <br />• Usuário criado no auth.users + perfil na public.users
-                <br />• O usuário pode fazer login imediatamente
-                <br />• Email é confirmado automaticamente
+                <br />• Usuário é criado no <code>auth.users</code> e em <code>public.users</code> com o perfil
+                selecionado
+                <br />• Email confirmado automaticamente
               </p>
             </div>
           )}
@@ -384,21 +416,11 @@ export function UserManagement() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nome
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Perfil
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Criado em
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ações
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Perfil</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criado em</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -411,16 +433,24 @@ export function UserManagement() {
               ) : (
                 users.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {user.name}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProfileColor(user.profile)}`}>
-                        {profileLabels[user.profile]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProfileColor(
+                            user.profile
+                          )}`}
+                        >
+                          {profileLabels[user.profile]}
+                        </span>
+                        {user._profileMismatch && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                            <AlertTriangle className="w-3 h-3" />
+                            Divergência
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(user.created_at).toLocaleDateString('pt-BR', {
@@ -428,7 +458,7 @@ export function UserManagement() {
                         month: '2-digit',
                         year: 'numeric',
                         hour: '2-digit',
-                        minute: '2-digit'
+                        minute: '2-digit',
                       })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
