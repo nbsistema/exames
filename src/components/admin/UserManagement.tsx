@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2 } from 'lucide-react';
-import { supabase, supabaseAdmin, AppUser, UserProfile } from '../../lib/supabase';
+import { supabase, supabaseAdmin, UserProfile } from '../../lib/supabase';
 import { databaseAuth } from '../../lib/database-auth';
+
+interface AppUser {
+  id: string;
+  email: string;
+  name: string;
+  profile: UserProfile;
+  created_at: string;
+  updated_at: string;
+}
 
 export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -28,21 +37,50 @@ export function UserManagement() {
 
     setLoading(true);
     try {
-      console.log('📋 Carregando usuários da tabela public.users...');
+      console.log('📋 Carregando usuários do auth.users + perfis...');
       
-      // Consultar apenas a tabela public.users (não auth.users)
-      const { data, error } = await supabase
+      // Buscar usuários do auth.users via Admin API
+      if (!supabaseAdmin) {
+        console.error('❌ Service Role Key não configurada');
+        setUsers([]);
+        return;
+      }
+
+      const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+
+      if (authError) {
+        console.error('❌ Erro ao carregar usuários do auth:', authError);
+        setUsers([]);
+        return;
+      }
+
+      // Buscar perfis da tabela public.users
+      const { data: profiles, error: profileError } = await supabase
         .from('users')
-        .select('id, email, name, profile, created_at, updated_at')
+        .select('id, name, profile, created_at, updated_at')
         .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        console.error('❌ Erro ao carregar usuários:', fetchError);
+      if (profileError) {
+        console.error('❌ Erro ao carregar perfis:', profileError);
         setUsers([]);
-      } else {
-        console.log('✅ Usuários carregados:', data?.length || 0);
-        setUsers(data || []);
+        return;
       }
+
+      // Combinar dados do auth.users com perfis
+      const combinedUsers: AppUser[] = authUsers.users.map(authUser => {
+        const profile = profiles?.find(p => p.id === authUser.id);
+        return {
+          id: authUser.id,
+          email: authUser.email!,
+          name: profile?.name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
+          profile: (profile?.profile || authUser.user_metadata?.profile || 'checkup') as UserProfile,
+          created_at: authUser.created_at,
+          updated_at: profile?.updated_at || authUser.updated_at || authUser.created_at,
+        };
+      });
+
+      console.log('✅ Usuários carregados:', combinedUsers.length);
+      setUsers(combinedUsers);
     } catch (error) {
       console.error('❌ Erro interno ao carregar usuários:', error);
       setUsers([]);
@@ -110,14 +148,32 @@ export function UserManagement() {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser || !supabase) return;
+    if (!editingUser || !supabase || !supabaseAdmin) return;
     
     setSubmitting(true);
 
     try {
       console.log('✏️ Atualizando usuário:', editingUser.id, formData);
       
-      const { error } = await supabase
+      // 1. Atualizar user_metadata no auth.users
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+        editingUser.id,
+        {
+          user_metadata: {
+            name: formData.name.trim(),
+            profile: formData.profile
+          }
+        }
+      );
+
+      if (authError) {
+        console.error('❌ Erro ao atualizar auth.users:', authError);
+        alert(`Erro ao atualizar usuário: ${authError.message}`);
+        return;
+      }
+
+      // 2. Atualizar perfil na tabela public.users
+      const { error: profileError } = await supabase
         .from('users')
         .update({
           name: formData.name.trim(),
@@ -125,9 +181,9 @@ export function UserManagement() {
         })
         .eq('id', editingUser.id);
 
-      if (error) {
-        console.error('❌ Erro ao atualizar usuário:', error);
-        alert(`Erro ao atualizar usuário: ${error.message}`);
+      if (profileError) {
+        console.error('❌ Erro ao atualizar perfil:', profileError);
+        alert(`Erro ao atualizar perfil: ${profileError.message}`);
         return;
       }
 
@@ -160,24 +216,24 @@ export function UserManagement() {
     try {
       console.log('🗑️ Excluindo usuário:', userId);
       
-      // 1. Remover da tabela public.users
-      const { error: deleteUserError } = await supabaseAdmin
+      // 1. Remover do auth.users (isso também remove automaticamente da public.users via trigger)
+      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+      if (deleteAuthError) {
+        console.error('❌ Erro ao excluir do auth.users:', deleteAuthError);
+        alert(`Erro ao excluir usuário: ${deleteAuthError.message}`);
+        return;
+      }
+
+      // 2. Remover da tabela public.users (caso não tenha trigger)
+      const { error: deleteProfileError } = await supabaseAdmin
         .from('users')
         .delete()
         .eq('id', userId);
 
-      if (deleteUserError) {
-        console.error('❌ Erro ao excluir da tabela users:', deleteUserError);
-        alert(`Erro ao excluir usuário: ${deleteUserError.message}`);
-        return;
-      }
-
-      // 2. Remover do auth.users
-      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-      if (deleteAuthError) {
-        console.warn('⚠️ Erro ao excluir do auth (usuário já removido da tabela):', deleteAuthError);
-        // Continuar mesmo com erro no auth, pois o usuário já foi removido da tabela
+      if (deleteProfileError) {
+        console.warn('⚠️ Erro ao excluir perfil (usuário já removido do auth):', deleteProfileError);
+        // Não é crítico, pois o usuário já foi removido do auth
       }
 
       console.log('✅ Usuário excluído com sucesso');
@@ -314,9 +370,9 @@ export function UserManagement() {
               <p className="text-sm text-blue-800">
                 <strong>Informações importantes:</strong>
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-                <br />• O usuário pode fazer login imediatamente após a criação
-                <br />• Os dados são salvos diretamente na tabela public.users
-                <br />• As senhas são criptografadas automaticamente
+                <br />• Usuário criado no auth.users + perfil na public.users
+                <br />• O usuário pode fazer login imediatamente
+                <br />• Email é confirmado automaticamente
               </p>
             </div>
           )}
