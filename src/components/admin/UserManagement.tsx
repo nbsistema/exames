@@ -118,33 +118,97 @@ export function UserManagement() {
 
     setSubmitting(true);
     try {
-      console.log('👥 Criando usuário (auth + public.users):', formData);
+      console.log('👥 Criando/Atualizando usuário (auth + public.users):', formData);
 
-      // IMPORTANTE: databaseAuth.createUser deve inserir em public.users com o profile do formulário
-      const { error } = await databaseAuth.createUser(
-        formData.email.trim().toLowerCase(),
-        formData.name.trim(),
-        formData.profile,
-        'nb@123' // senha padrão
-      );
+      const email = formData.email.trim().toLowerCase();
 
-      if (error) {
-        console.error('❌ Erro ao criar usuário:', error);
-        alert(`Erro ao criar usuário: ${error}`);
+      // 1) Verifica se o usuário já existe na tabela users pelo email
+      const { data: existingDbUser, error: checkDbError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      if (checkDbError && checkDbError.code !== 'PGRST116') { // PGRST116 = não encontrado
+        console.error('❌ Erro ao verificar usuário existente no DB:', checkDbError);
+        alert(`Erro ao verificar usuário no DB: ${checkDbError.message}`);
         return;
+      }
+
+      // 2) Verifica se o usuário já existe no auth.users (opcional, mas útil para evitar duplicatas)
+      const { data: authUsers, error: checkAuthError } = await supabaseAdmin.auth.admin.listUsers();
+      if (checkAuthError) {
+        console.error('❌ Erro ao verificar auth.users:', checkAuthError);
+        alert(`Erro ao verificar auth.users: ${checkAuthError.message}`);
+        return;
+      }
+
+      const existingAuthUser = authUsers.users.find(u => u.email === email);
+
+      let userId: string;
+
+      if (existingAuthUser) {
+        // Usuário já existe no auth, usaremos o ID existente
+        userId = existingAuthUser.id;
+        console.log('Usuário existente encontrado no auth, atualizando...');
+      } else {
+        // Cria novo usuário no auth
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email: email,
+          password: 'nb@123',
+          email_confirm: true,
+          user_metadata: { name: formData.name.trim(), profile: formData.profile },
+        });
+
+        if (authError) {
+          console.error('❌ Erro ao criar usuário no auth:', authError);
+          alert(`Erro ao criar usuário no auth: ${authError.message}`);
+          return;
+        }
+
+        userId = authData.user.id;
+        console.log('Novo usuário criado no auth:', userId);
+      }
+
+      // 3) Upsert no DB (insere ou atualiza baseado no id)
+      const { error: dbError } = await supabase
+        .from('users')
+        .upsert({
+          id: userId,
+          email: email,
+          name: formData.name.trim(),
+          profile: formData.profile,
+          created_at: existingDbUser ? undefined : new Date().toISOString(), // Mantém created_at se existente
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (dbError) {
+        console.error('❌ Erro ao upsert no DB:', dbError);
+        alert(`Erro ao upsert no DB: ${dbError.message}`);
+        return;
+      }
+
+      // 4) Atualiza metadata no auth para consistência (se necessário)
+      if (existingAuthUser) {
+        const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+          user_metadata: { name: formData.name.trim(), profile: formData.profile },
+        });
+        if (updateAuthError) {
+          console.warn('⚠️ Erro ao atualizar metadata no auth:', updateAuthError);
+        }
       }
 
       await loadUsers();
       setShowForm(false);
       setFormData({ name: '', email: '', profile: 'parceiro' });
       alert(
-        'Usuário criado com sucesso!\n\nCredenciais de acesso:\n• Email: ' +
+        'Usuário criado/atualizado com sucesso!\n\nCredenciais de acesso:\n• Email: ' +
           formData.email +
           '\n• Senha: nb@123'
       );
     } catch (error) {
-      console.error('❌ Erro interno na criação:', error);
-      alert('Erro interno ao criar usuário. Verifique o console para mais detalhes.');
+      console.error('❌ Erro interno na criação/atualização:', error);
+      alert('Erro interno ao criar/atualizar usuário. Verifique o console para mais detalhes.');
     } finally {
       setSubmitting(false);
     }
