@@ -1,3 +1,4 @@
+// src/components/Dashboard.tsx
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { AdminDashboard } from './admin/AdminDashboard';
@@ -8,76 +9,30 @@ import { CheckupDashboard } from './checkup/CheckupDashboard';
 export function Dashboard() {
   const { user, loading } = useAuth();
 
-  console.log('📊 Dashboard renderizando:', { user: user?.email, profile: user?.profile, loading });
+  if (loading) return null;
+  if (!user) return null;
 
-  // Se não há usuário, não renderizar nada (será tratado pelo App.tsx)
-  if (!user) {
-    console.log('❌ Dashboard sem usuário');
-    return null;
-  }
+  console.log('📊 Perfil do usuário:', user.profile);
 
-  console.log('🎯 Renderizando dashboard para perfil:', user.profile);
-
-  const renderDashboard = () => {
-    try {
-      switch (user.profile) {
-        case 'admin':
-          console.log('👑 Renderizando AdminDashboard');
-          return <AdminDashboard />;
-        case 'parceiro':
-          console.log('🤝 Renderizando PartnerDashboard');
-          return <PartnerDashboard />;
-        case 'recepcao':
-          console.log('📞 Renderizando ReceptionDashboard');
-          return <ReceptionDashboard />;
-        case 'checkup':
-          console.log('🏥 Renderizando CheckupDashboard');
-          return <CheckupDashboard />;
-        default:
-          console.log('❓ Perfil não reconhecido:', user.profile);
-          return (
-            <div className="p-6">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-yellow-800">Perfil não reconhecido</h3>
-                <p className="text-yellow-700">
-                  O perfil "{user.profile}" não é válido. Entre em contato com o administrador.
-                </p>
-                <button 
-                  onClick={() => window.location.reload()} 
-                  className="mt-2 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
-                >
-                  Recarregar Página
-                </button>
-              </div>
-            </div>
-          );
-      }
-    } catch (error) {
-      console.error('❌ Erro ao renderizar dashboard:', error);
+  switch (user.profile) {
+    case 'admin':
+      return <AdminDashboard />;
+    case 'parceiro':
+      return <PartnerDashboard />;
+    case 'recepcao':
+      return <ReceptionDashboard />;
+    case 'checkup':
+      return <CheckupDashboard />;
+    default:
       return (
         <div className="p-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-red-800">Erro no Dashboard</h3>
-            <p className="text-red-700">
-              Ocorreu um erro ao carregar o dashboard. Tente recarregar a página.
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h3 className="text-lg font-medium text-yellow-800">Perfil não reconhecido</h3>
+            <p className="text-yellow-700">
+              O perfil "{user.profile}" não é válido. Entre em contato com o administrador.
             </p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-            >
-              Recarregar Página
-            </button>
-            <details className="mt-2">
-              <summary className="cursor-pointer text-sm">Detalhes do erro</summary>
-              <pre className="text-xs mt-1 bg-red-100 p-2 rounded">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
           </div>
         </div>
       );
-    }
-  };
-
-  return renderDashboard();
+  }
 }
