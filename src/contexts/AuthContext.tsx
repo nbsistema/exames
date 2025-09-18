@@ -20,7 +20,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('🔄 Inicializando autenticação...');
     try {
       const currentUser = await databaseAuth.getCurrentUser();
-      console.log('👤 Usuário atual:', currentUser ? `${currentUser.email} (${currentUser.profile})` : 'Nenhum');
+      if (currentUser) {
+        console.log('👤 Usuário atual:', `${currentUser.email} (${currentUser.profile})`);
+        console.log('📊 Redirecionando para dashboard do perfil:', currentUser.profile);
+      } else {
+        console.log('👤 Nenhum usuário autenticado');
+      }
       setUser(currentUser);
     } finally {
       setLoading(false);

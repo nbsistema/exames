@@ -12,20 +12,21 @@ export function Dashboard() {
   if (loading) return null;
   if (!user) return null;
 
-  console.log('📊 Perfil do usuário:', user.profile);
+  console.log('📊 Dashboard - Perfil do usuário:', user.profile);
+  console.log('📊 Dashboard - Dados completos:', { email: user.email, name: user.name, profile: user.profile });
 
   switch (user.profile) {
     case 'admin':
-      console.log('🔄 Carregando AdminDashboard');
+      console.log('👑 Carregando AdminDashboard para:', user.email);
       return <AdminDashboard />;
     case 'parceiro':
-      console.log('🔄 Carregando PartnerDashboard');
+      console.log('🤝 Carregando PartnerDashboard para:', user.email);
       return <PartnerDashboard />;
     case 'recepcao':
-      console.log('🔄 Carregando ReceptionDashboard');
+      console.log('📞 Carregando ReceptionDashboard para:', user.email);
       return <ReceptionDashboard />;
     case 'checkup':
-      console.log('🔄 Carregando CheckupDashboard');
+      console.log('🏥 Carregando CheckupDashboard para:', user.email);
       return <CheckupDashboard />;
     default:
       console.warn('⚠️ Perfil não reconhecido:', user.profile);
