@@ -1,7 +1,7 @@
+// src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserProfile } from '../lib/supabase';
-import { databaseAuth, AuthUser } from '../lib/database-auth';
+import { databaseAuth, AuthUser, UserProfile } from '../lib/database-auth';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -19,19 +19,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   const initializeAuth = useCallback(async () => {
-    console.log('🔄 Inicializando AuthContext...');
     try {
-      const currentUser = databaseAuth.getCurrentUser();
-      if (currentUser) {
-        console.log('✅ Usuário logado:', currentUser.email);
-        setUser(currentUser);
-      } else {
-        console.log('ℹ️ Nenhum usuário logado');
-        setUser(null);
-      }
-    } catch (error) {
-      console.error('❌ Erro ao inicializar auth:', error);
-      setUser(null);
+      const currentUser = await databaseAuth.getCurrentUser();
+      setUser(currentUser);
     } finally {
       setLoading(false);
     }
@@ -47,23 +37,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(loggedUser);
 
-    // Redireciona conforme o perfil do usuário
-    switch (loggedUser.profile?.role) {
+    // redireciona conforme o perfil
+    switch (loggedUser.profile) {
       case 'admin':
         navigate('/components/admin/AdminDashboard');
         break;
       case 'checkup':
         navigate('/components/checkup/CheckupDashboard');
         break;
-      case 'partner':
+      case 'parceiro':
         navigate('/components/partner/PartnerDashboard');
         break;
-      case 'reception':
+      case 'recepcao':
         navigate('/components/reception/ReceptionDashboard');
         break;
       default:
         navigate('/');
-        break;
     }
 
     return { error: null };
@@ -75,9 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     navigate('/');
   };
 
-  const createUser = async (email: string, name: string, profile: UserProfile) => {
-    return databaseAuth.createUser(email, name, profile);
-  };
+  const createUser = (email: string, name: string, profile: UserProfile) =>
+    databaseAuth.createUser(email, name, profile);
 
   return (
     <AuthContext.Provider value={{ user, loading, signIn, signOut, createUser }}>
@@ -87,7 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth deve ser usado dentro de AuthProvider');
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth deve ser usado dentro de AuthProvider');
+  return ctx;
 }
+
