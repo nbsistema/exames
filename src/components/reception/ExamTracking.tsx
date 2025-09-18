@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Edit, Filter } from 'lucide-react';
+import { Eye, Edit, Filter, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function ExamTracking() {
   const [examRequests, setExamRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [showObservations, setShowObservations] = useState(false);
   const [observations, setObservations] = useState('');
@@ -12,12 +13,22 @@ export function ExamTracking() {
     status: '',
     paymentType: '',
   });
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   useEffect(() => {
     loadExamRequests();
+    
+    // Auto-refresh a cada 1 minuto
+    const interval = setInterval(() => {
+      refreshData();
+    }, 60000);
+
+    return () => clearInterval(interval);
   }, [filters]);
 
-  const loadExamRequests = async () => {
+  const loadExamRequests = async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    
     try {
       let query = supabase
         .from('exam_requests')
@@ -41,11 +52,18 @@ export function ExamTracking() {
 
       if (error) throw error;
       setExamRequests(data || []);
+      setLastUpdate(new Date());
     } catch (error) {
       console.error('Error loading exam requests:', error);
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
+  };
+
+  const refreshData = async () => {
+    setRefreshing(true);
+    await loadExamRequests(false);
+    setRefreshing(false);
   };
 
   const handleStatusUpdate = async (examId: string, newStatus: string) => {
@@ -62,7 +80,7 @@ export function ExamTracking() {
 
       if (error) throw error;
 
-      await loadExamRequests();
+      await loadExamRequests(false);
       setSelectedExam(null);
       setShowObservations(false);
       setObservations('');
@@ -92,10 +110,32 @@ export function ExamTracking() {
     intervencao: 'Intervenção'
   };
 
+  const formatLastUpdate = () => {
+    return lastUpdate.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-900">Acompanhamento de Pedidos de Exames</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Acompanhamento de Pedidos de Exames</h2>
+          <p className="text-sm text-gray-600">
+            Última atualização: {formatLastUpdate()} • 
+            <span className="text-green-600 ml-1">Atualização automática a cada 1 minuto</span>
+          </p>
+        </div>
+        <button
+          onClick={refreshData}
+          disabled={refreshing}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          <span>{refreshing ? 'Atualizando...' : 'Atualizar'}</span>
+        </button>
       </div>
 
       <div className="bg-gray-50 rounded-lg p-4">
@@ -111,10 +151,16 @@ export function ExamTracking() {
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Todos</option>
-              <option value="encaminhado">Encaminhado</option>
-              <option value="executado">Executado</option>
-              <option value="intervencao">Intervenção</option>
+              <option value="">Todos ({examRequests.length})</option>
+              <option value="encaminhado">
+                Encaminhado ({examRequests.filter(e => e.status === 'encaminhado').length})
+              </option>
+              <option value="executado">
+                Executado ({examRequests.filter(e => e.status === 'executado').length})
+              </option>
+              <option value="intervencao">
+                Intervenção ({examRequests.filter(e => e.status === 'intervencao').length})
+              </option>
             </select>
           </div>
           <div>
@@ -125,8 +171,12 @@ export function ExamTracking() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Todos</option>
-              <option value="particular">Particular</option>
-              <option value="convenio">Convênio</option>
+              <option value="particular">
+                Particular ({examRequests.filter(e => e.payment_type === 'particular').length})
+              </option>
+              <option value="convenio">
+                Convênio ({examRequests.filter(e => e.payment_type === 'convenio').length})
+              </option>
             </select>
           </div>
         </div>
@@ -174,6 +224,19 @@ export function ExamTracking() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Exames ({examRequests.length} registros)
+            </h3>
+            <div className="text-sm text-gray-600">
+              {refreshing && (
+                <span className="flex items-center text-blue-600">
+                  <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+                  Atualizando...
+                </span>
+              )}
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -198,6 +261,12 @@ export function ExamTracking() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tipo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Parceiro
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Criado em
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Ações
@@ -231,6 +300,12 @@ export function ExamTracking() {
                       {exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {exam.partners?.name || 'N/A'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(exam.created_at).toLocaleDateString('pt-BR')} {new Date(exam.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex space-x-2">
                         {exam.status === 'encaminhado' && (
                           <button
@@ -252,6 +327,11 @@ export function ExamTracking() {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
+                        )}
+                        {exam.observations && (
+                          <div className="text-xs text-gray-500" title={exam.observations}>
+                            📝
+                          </div>
                         )}
                       </div>
                     </td>
