@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { databaseAuth } from '../lib/database-auth';
-import { useRouter } from 'next/navigation'; // Next.js App Router
+import { useNavigate } from 'react-router-dom'; // ✅ React Router
+
+// Se quiser tipar o profile localmente:
+type UserProfile = 'admin' | 'parceiro' | 'checkup' | 'recepcao';
 
 export function LoginForm() {
-  const router = useRouter();
+  const navigate = useNavigate(); // ✅
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -18,16 +21,11 @@ export function LoginForm() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
-  const [setupData, setSetupData] = useState({
-    name: '',
-    email: '',
-    password: '',
-  });
+  const [setupData, setSetupData] = useState({ name: '', email: '', password: '' });
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupMessage, setSetupMessage] = useState('');
 
-  // Rotas por perfil: a fonte de verdade é o banco (users.profile)
-  const routeByProfile: Record<'admin' | 'parceiro' | 'checkup' | 'recepcao', string> = {
+  const routeByProfile: Record<UserProfile, string> = {
     admin: '/admin',
     parceiro: '/parceiro',
     checkup: '/checkup',
@@ -40,32 +38,23 @@ export function LoginForm() {
     setSetupMessage('');
 
     try {
-      console.log('👑 Criando primeiro administrador:', setupData);
-
-      // supondo que exista esse método no seu databaseAuth
       const { error } = await databaseAuth.createFirstAdmin(
         setupData.email.trim().toLowerCase(),
         setupData.name.trim(),
         setupData.password
       );
-
       if (error) {
-        console.error('❌ Erro no setup:', error);
         setSetupMessage(`Erro no setup: ${error}`);
         return;
       }
-
-      console.log('✅ Primeiro administrador criado com sucesso');
       setSetupMessage('Administrador criado com sucesso! Você pode fazer login agora.');
-
       setTimeout(() => {
         setShowInitialSetup(false);
         setSetupData({ name: '', email: '', password: '' });
         setSetupMessage('');
       }, 3000);
-    } catch (error) {
-      console.error('❌ Erro interno no setup:', error);
-      setSetupMessage('Erro no setup: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } catch (err) {
+      setSetupMessage('Erro no setup: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     } finally {
       setSetupLoading(false);
     }
@@ -75,12 +64,11 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setResetMessage('');
-
     try {
       // TODO: implementar reset real
       setResetMessage('Email de recuperação enviado com sucesso!');
-    } catch (error) {
-      setResetMessage('Erro ao enviar email: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } catch (err) {
+      setResetMessage('Erro ao enviar email: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     } finally {
       setLoading(false);
     }
@@ -102,26 +90,26 @@ export function LoginForm() {
 
     setLoading(true);
     try {
-      // 1) login pelo seu AuthContext
+      // 1) login via AuthContext
       const { error: signInError } = await signIn(email, password);
       if (signInError) {
         setError(signInError);
         return;
       }
 
-      // 2) revalidar direto no banco para obter o profile correto
+      // 2) revalidar direto no banco para pegar o profile correto
       const user = await databaseAuth.getCurrentUser();
       if (!user) {
         setError('Não foi possível carregar seu perfil. Tente novamente.');
         return;
       }
 
-      // 3) redirecionar pela role real (nada de localStorage para decidir rota)
+      // 3) redirecionar pela role real
       const dest = routeByProfile[user.profile] ?? '/checkup';
       setSuccess('Login bem-sucedido! Redirecionando...');
-      router.replace(dest);
-    } catch (error) {
-      setError(`Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      navigate(dest, { replace: true }); // ✅
+    } catch (err) {
+      setError(`Erro interno: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -386,7 +374,7 @@ export function LoginForm() {
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
-              <strong>Importante:</strong> 
+              <strong>Importante:</strong>
               <br />• <strong>Sistema híbrido de autenticação</strong>
               <br />• Usuários existentes do Supabase Auth funcionam normalmente
               <br />• Novos usuários são salvos na tabela public.users
@@ -398,11 +386,10 @@ export function LoginForm() {
         </div>
 
         <div className="text-center">
-          <p className="text-xs text-gray-500">
-            © 2025 NB Sistema. Todos os direitos reservados.
-          </p>
+          <p className="text-xs text-gray-500">© 2025 NB Sistema. Todos os direitos reservados.</p>
         </div>
       </div>
     </div>
   );
 }
+
