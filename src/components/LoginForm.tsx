@@ -7,6 +7,7 @@ export function LoginForm() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [success, setSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -77,50 +78,29 @@ export function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    // Validação no frontend
     if (!email.trim() || !password.trim()) {
       setError('Email e senha são obrigatórios');
       return;
     }
-    
     if (!email.includes('@')) {
       setError('Email deve ter formato válido');
       return;
     }
-    
     setLoading(true);
-    
-    // Timeout para evitar loading infinito
-    const timeoutId = setTimeout(() => {
-      setLoading(false);
-      setError('Timeout: Login demorou muito para responder. Tente novamente.');
-    }, 10000); // 10 segundos
-    
     try {
-      console.log('🔐 Iniciando processo de login...');
-      console.log('📧 Email:', email.trim().toLowerCase());
-      console.log('🔒 Senha length:', password.length);
-      
       const { error: signInError } = await signIn(email, password);
-      
-      clearTimeout(timeoutId);
-      
       if (signInError) {
-        console.error('❌ Erro no login:', signInError);
         setError(signInError);
       } else {
         console.log('✅ Login realizado com sucesso');
-        // Não definir loading como false aqui, deixar o AuthContext gerenciar
-        return;
+        setSuccess('Login bem-sucedido! Redirecionando...');
+        setTimeout(() => setSuccess(''), 2000); // Limpa após 2 segundos
       }
     } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('Erro no login:', error);
-      setError(`Erro interno do sistema: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      setError(`Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   if (showInitialSetup) {
@@ -352,6 +332,12 @@ export function LoginForm() {
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800">{success}</p>
               </div>
             )}
 
