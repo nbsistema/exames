@@ -2,28 +2,42 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginForm } from './components/LoginForm';
-import { Dashboard } from './components/Dashboard';
+import { AdminDashboard } from './components/AdminDashboard'; // Crie este componente
+import { ParceiroDashboard } from './components/ParceiroDashboard'; // Crie este componente
+import { CheckupDashboard } from './components/CheckupDashboard'; // Crie este componente
+import { RecepcaoDashboard } from './components/RecepcaoDashboard'; // Crie este componente
 import { Layout } from './components/Layout';
+
+function ProtectedRoute({ children, requiredProfile }: { children: JSX.Element; requiredProfile: string }) {
+  const { user } = useAuth();
+  if (!user) {
+    console.log('🚫 Usuário não autenticado, redirecionando para /login');
+    return <Navigate to="/login" replace />;
+  }
+  if (user.profile !== requiredProfile) {
+    console.log(`🚫 Perfil ${user.profile} não autorizado para ${requiredProfile}, redirecionando para /unauthorized`);
+    return <Navigate to="/unauthorized" replace />;
+  }
+  return children;
+}
 
 function AppContent() {
   const { user, loading } = useAuth();
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
 
   useEffect(() => {
-    console.log('👤 Estado do usuário:', { user: user?.email, loading });
-    
-    // Timeout de segurança para evitar loading infinito
+    console.log('👤 Estado do usuário:', { user: user?.email, profile: user?.profile, loading });
+
     const maxTimer = setTimeout(() => {
       if (loading) {
         console.warn('⚠️ Timeout de carregamento atingido');
         setShowTimeoutWarning(true);
       }
-    }, 8000); // 8 segundos máximo
-    
-    return () => clearTimeout(maxTimer);
-  }, [loading]);
+    }, 8000);
 
-  // Mostrar loading enquanto está carregando
+    return () => clearTimeout(maxTimer);
+  }, [loading, user]);
+
   if (loading && !showTimeoutWarning) {
     console.log('⏳ Mostrando loading...');
     return (
@@ -36,8 +50,7 @@ function AppContent() {
       </div>
     );
   }
-  
-  // Se atingiu o timeout, mostrar opções de recovery
+
   if (showTimeoutWarning) {
     console.error('❌ Timeout de carregamento atingido');
     return (
@@ -49,18 +62,18 @@ function AppContent() {
               O sistema demorou muito para carregar. Isso pode ser um problema temporário.
             </p>
             <div className="space-y-2">
-              <button 
-                onClick={() => window.location.reload()} 
+              <button
+                onClick={() => window.location.reload()}
                 className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Recarregar Página
               </button>
-              <button 
+              <button
                 onClick={() => {
                   localStorage.clear();
                   sessionStorage.clear();
                   window.location.reload();
-                }} 
+                }}
                 className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Limpar Cache e Recarregar
@@ -72,19 +85,26 @@ function AppContent() {
     );
   }
 
-  // Se não há usuário, mostrar login
   if (!user) {
     console.log('🔐 Mostrando tela de login');
-    return <LoginForm />;
+    return <Navigate to="/login" replace />;
   }
 
-  // Se há usuário, mostrar dashboard
-  console.log('📊 Mostrando dashboard para:', user.email, 'perfil:', user.profile);
-  return (
-    <Layout>
-      <Dashboard />
-    </Layout>
-  );
+  // Redireciona com base no perfil do usuário
+  console.log('📊 Redirecionando para dashboard de:', user.email, 'perfil:', user.profile);
+  switch (user.profile) {
+    case 'admin':
+      return <Navigate to="/dashboard/admin" replace />;
+    case 'parceiro':
+      return <Navigate to="/dashboard/parceiro" replace />;
+    case 'checkup':
+      return <Navigate to="/dashboard/checkup" replace />;
+    case 'recepcao':
+      return <Navigate to="/dashboard/recepcao" replace />;
+    default:
+      console.warn('⚠️ Perfil desconhecido:', user.profile);
+      return <Navigate to="/dashboard/default" replace />;
+  }
 }
 
 function App() {
@@ -92,6 +112,49 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/unauthorized" element={<div>Acesso não autorizado</div>} />
+          <Route
+            path="/dashboard/admin"
+            element={
+              <ProtectedRoute requiredProfile="admin">
+                <Layout>
+                  <AdminDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/parceiro"
+            element={
+              <ProtectedRoute requiredProfile="parceiro">
+                <Layout>
+                  <ParceiroDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/checkup"
+            element={
+              <ProtectedRoute requiredProfile="checkup">
+                <Layout>
+                  <CheckupDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/recepcao"
+            element={
+              <ProtectedRoute requiredProfile="recepcao">
+                <Layout>
+                  <RecepcaoDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/dashboard/default" element={<div>Página Padrão</div>} />
           <Route path="/" element={<AppContent />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
