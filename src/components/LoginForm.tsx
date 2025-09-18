@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { databaseAuth } from '../lib/database-auth';
+import { useRouter } from 'next/navigation'; // Next.js App Router
 
 export function LoginForm() {
+  const router = useRouter();
   const { signIn } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,6 +26,14 @@ export function LoginForm() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupMessage, setSetupMessage] = useState('');
 
+  // Rotas por perfil: a fonte de verdade é o banco (users.profile)
+  const routeByProfile: Record<'admin' | 'parceiro' | 'checkup' | 'recepcao', string> = {
+    admin: '/admin',
+    parceiro: '/parceiro',
+    checkup: '/checkup',
+    recepcao: '/recepcao',
+  };
+
   const handleInitialSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSetupLoading(true);
@@ -30,23 +41,23 @@ export function LoginForm() {
 
     try {
       console.log('👑 Criando primeiro administrador:', setupData);
-      
+
+      // supondo que exista esse método no seu databaseAuth
       const { error } = await databaseAuth.createFirstAdmin(
         setupData.email.trim().toLowerCase(),
         setupData.name.trim(),
         setupData.password
       );
-      
+
       if (error) {
         console.error('❌ Erro no setup:', error);
         setSetupMessage(`Erro no setup: ${error}`);
         return;
       }
-      
+
       console.log('✅ Primeiro administrador criado com sucesso');
       setSetupMessage('Administrador criado com sucesso! Você pode fazer login agora.');
-      
-      // Aguardar um pouco e voltar para o login
+
       setTimeout(() => {
         setShowInitialSetup(false);
         setSetupData({ name: '', email: '', password: '' });
@@ -66,7 +77,7 @@ export function LoginForm() {
     setResetMessage('');
 
     try {
-      // Implementar lógica de reset de senha aqui
+      // TODO: implementar reset real
       setResetMessage('Email de recuperação enviado com sucesso!');
     } catch (error) {
       setResetMessage('Erro ao enviar email: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
@@ -78,6 +89,8 @@ export function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
+
     if (!email.trim() || !password.trim()) {
       setError('Email e senha são obrigatórios');
       return;
@@ -86,16 +99,27 @@ export function LoginForm() {
       setError('Email deve ter formato válido');
       return;
     }
+
     setLoading(true);
     try {
+      // 1) login pelo seu AuthContext
       const { error: signInError } = await signIn(email, password);
       if (signInError) {
         setError(signInError);
-      } else {
-        console.log('✅ Login realizado com sucesso');
-        setSuccess('Login bem-sucedido! Redirecionando...');
-        setTimeout(() => setSuccess(''), 2000); // Limpa após 2 segundos
+        return;
       }
+
+      // 2) revalidar direto no banco para obter o profile correto
+      const user = await databaseAuth.getCurrentUser();
+      if (!user) {
+        setError('Não foi possível carregar seu perfil. Tente novamente.');
+        return;
+      }
+
+      // 3) redirecionar pela role real (nada de localStorage para decidir rota)
+      const dest = routeByProfile[user.profile] ?? '/checkup';
+      setSuccess('Login bem-sucedido! Redirecionando...');
+      router.replace(dest);
     } catch (error) {
       setError(`Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
@@ -123,7 +147,7 @@ export function LoginForm() {
                   Nome Completo
                 </label>
                 <div className="relative">
-                  <UserPlus className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     id="setup-name"
                     type="text"
@@ -141,7 +165,7 @@ export function LoginForm() {
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     id="setup-email"
                     type="email"
@@ -159,7 +183,7 @@ export function LoginForm() {
                   Senha
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     id="setup-password"
                     type="password"
@@ -182,7 +206,7 @@ export function LoginForm() {
               <button
                 type="submit"
                 disabled={setupLoading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
               >
                 {setupLoading ? 'Criando...' : 'Criar Administrador'}
               </button>
@@ -231,7 +255,7 @@ export function LoginForm() {
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     id="reset-email"
                     type="email"
@@ -253,7 +277,7 @@ export function LoginForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Enviando...' : 'Enviar Email de Recuperação'}
               </button>
@@ -291,7 +315,7 @@ export function LoginForm() {
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   id="email"
                   type="email"
@@ -309,7 +333,7 @@ export function LoginForm() {
                 Senha
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
@@ -322,7 +346,7 @@ export function LoginForm() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -344,7 +368,7 @@ export function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
