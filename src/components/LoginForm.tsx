@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { databaseAuth } from '../lib/database-auth';
-import { useNavigate } from 'react-router-dom';
 
 type UserProfile = 'admin' | 'parceiro' | 'checkup' | 'recepcao';
 
 export function LoginForm() {
-  const navigate = useNavigate();
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
