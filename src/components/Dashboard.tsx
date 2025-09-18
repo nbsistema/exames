@@ -16,14 +16,19 @@ export function Dashboard() {
 
   switch (user.profile) {
     case 'admin':
+      console.log('🔄 Carregando AdminDashboard');
       return <AdminDashboard />;
     case 'parceiro':
+      console.log('🔄 Carregando PartnerDashboard');
       return <PartnerDashboard />;
     case 'recepcao':
+      console.log('🔄 Carregando ReceptionDashboard');
       return <ReceptionDashboard />;
     case 'checkup':
+      console.log('🔄 Carregando CheckupDashboard');
       return <CheckupDashboard />;
     default:
+      console.warn('⚠️ Perfil não reconhecido:', user.profile);
       return (
         <div className="p-6">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -31,6 +36,14 @@ export function Dashboard() {
             <p className="text-yellow-700">
               O perfil "{user.profile}" não é válido. Entre em contato com o administrador.
             </p>
+            <div className="mt-4 p-3 bg-yellow-100 rounded">
+              <p className="text-sm text-yellow-800">
+                <strong>Debug:</strong>
+                <br />• Email: {user.email}
+                <br />• Perfil recebido: "{user.profile}"
+                <br />• Perfis válidos: admin, parceiro, recepcao, checkup
+              </p>
+            </div>
           </div>
         </div>
       );

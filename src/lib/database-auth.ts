@@ -24,6 +24,7 @@ async function fetchProfile(id: string): Promise<{ name: string; profile: UserPr
 export const databaseAuth = {
   async signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
     try {
+      console.log('🔐 Iniciando login para:', email);
       const normalizedEmail = email.trim().toLowerCase();
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
@@ -31,9 +32,11 @@ export const databaseAuth = {
       });
 
       if (authError || !authData.user) {
+        console.error('❌ Erro no login:', authError?.message);
         return { user: null, error: 'Email ou senha incorretos' };
       }
 
+      console.log('✅ Login no Supabase Auth bem-sucedido');
       // Buscar perfil real
       const profileData = await fetchProfile(authData.user.id);
 
@@ -42,12 +45,15 @@ export const databaseAuth = {
       let name = profileData?.name ?? (authData.user.email?.split('@')[0] || 'Usuário');
 
       if (!profileData) {
+        console.log('⚠️ Perfil não encontrado, criando com padrão checkup');
         await supabase.from('users').insert({
           id: authData.user.id,
           email: normalizedEmail,
           name,
           profile
         }).single();
+      } else {
+        console.log('✅ Perfil encontrado no banco:', profile);
       }
 
       const user: AuthUser = {
@@ -61,6 +67,7 @@ export const databaseAuth = {
       localStorage.setItem('nb-auth-user', JSON.stringify(user));
       localStorage.setItem('nb-auth-timestamp', Date.now().toString());
 
+      console.log('✅ Login completo, usuário:', user.email, 'perfil:', user.profile);
       return { user, error: null };
     } catch (err) {
       console.error('❌ Erro no login:', err);

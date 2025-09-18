@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginForm } from './components/LoginForm';
 import { Dashboard } from './components/Dashboard';
@@ -79,7 +78,7 @@ function AppContent() {
   }
 
   // Se há usuário, mostrar dashboard
-  console.log('📊 Mostrando dashboard para:', user.email, 'perfil:', user.profile);
+  console.log('📊 Redirecionando usuário:', user.email, 'para perfil:', user.profile);
   return (
     <Layout>
       <Dashboard />
@@ -89,14 +88,9 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/" element={<AppContent />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

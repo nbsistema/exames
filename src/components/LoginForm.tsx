@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { databaseAuth } from '../lib/database-auth';
-import { useNavigate } from 'react-router-dom'; // ✅ React Router
+import { useNavigate } from 'react-router-dom';
 
-// Se quiser tipar o profile localmente:
 type UserProfile = 'admin' | 'parceiro' | 'checkup' | 'recepcao';
 
 export function LoginForm() {
-  const navigate = useNavigate(); // ✅
+  const navigate = useNavigate();
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -24,13 +23,6 @@ export function LoginForm() {
   const [setupData, setSetupData] = useState({ name: '', email: '', password: '' });
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupMessage, setSetupMessage] = useState('');
-
-  const routeByProfile: Record<UserProfile, string> = {
-    admin: '/admin',
-    parceiro: '/parceiro',
-    checkup: '/checkup',
-    recepcao: '/recepcao',
-  };
 
   const handleInitialSetup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,24 +82,23 @@ export function LoginForm() {
 
     setLoading(true);
     try {
-      // 1) login via AuthContext
+      // 1) Fazer login via AuthContext
       const { error: signInError } = await signIn(email, password);
       if (signInError) {
         setError(signInError);
         return;
       }
 
-      // 2) revalidar direto no banco para pegar o profile correto
+      // 2) Revalidar direto no banco para pegar o perfil correto
       const user = await databaseAuth.getCurrentUser();
       if (!user) {
         setError('Não foi possível carregar seu perfil. Tente novamente.');
         return;
       }
 
-      // 3) redirecionar pela role real
-      const dest = routeByProfile[user.profile] ?? '/checkup';
+      // 3) Redirecionar conforme o perfil do usuário
       setSuccess('Login bem-sucedido! Redirecionando...');
-      navigate(dest, { replace: true }); // ✅
+      
     } catch (err) {
       setError(`Erro interno: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     } finally {

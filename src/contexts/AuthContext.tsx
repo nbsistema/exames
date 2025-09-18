@@ -17,11 +17,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const initializeAuth = useCallback(async () => {
+    console.log('🔄 Inicializando autenticação...');
     try {
       const currentUser = await databaseAuth.getCurrentUser();
+      console.log('👤 Usuário atual:', currentUser ? `${currentUser.email} (${currentUser.profile})` : 'Nenhum');
       setUser(currentUser);
     } finally {
       setLoading(false);
+      console.log('✅ Inicialização da autenticação concluída');
     }
   }, []);
 
@@ -30,16 +33,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [initializeAuth]);
 
   const signIn = async (email: string, password: string) => {
+    console.log('🔐 Tentando fazer login para:', email);
     const { user: loggedUser, error } = await databaseAuth.signIn(email, password);
     if (error || !loggedUser) return { error: error || 'Falha ao autenticar' };
 
+    console.log('✅ Login bem-sucedido:', loggedUser.email, 'perfil:', loggedUser.profile);
     setUser(loggedUser);
     return { error: null };
   };
 
   const signOut = async () => {
+    console.log('🚪 Fazendo logout...');
     await databaseAuth.signOut();
     setUser(null);
+    console.log('✅ Logout concluído');
   };
 
   const createUser = (email: string, name: string, profile: UserProfile) =>
