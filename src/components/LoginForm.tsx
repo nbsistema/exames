@@ -364,8 +364,7 @@ export function LoginForm() {
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
               <strong>NB Sistemas</strong>
-              <br />• <strong>Nosso Hub de Exames integra parceiros da área da saúde</strong>
-              <br />• Garantindo processos eficientes e resultados confiáveis
+              <br />• Garantindo processos eficientes e resultados confiáveis.
               <br />• Entre com suas credenciais para começar!
               </p>
           </div>
