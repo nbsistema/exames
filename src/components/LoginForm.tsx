@@ -106,14 +106,16 @@ export function LoginForm() {
 
   if (showInitialSetup) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full space-y-8">
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <span className="text-white font-bold text-2xl">NB Sistema</span>
-              </div>
-              <h2 className="text-3xl font-bold text-gray-900">Setup Inicial</h2>
+     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+  <div className="max-w-md w-full space-y-8">
+    <div className="bg-white rounded-xl shadow-lg p-8">
+      <div className="text-center mb-8">
+        {/* Faixa azul ajustada */}
+        <div className="px-6 py-3 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+          <span className="text-white font-bold text-xl md:text-2xl">NB Sistema</span>
+        </div>
+
+        <h2 className="text-3xl font-bold text-gray-900">Setup Inicial</h2>
               <p className="text-gray-600 mt-2">Hub Exames</p>
               <p className="text-sm text-gray-500">Criar primeiro usuário administrador</p>
             </div>
