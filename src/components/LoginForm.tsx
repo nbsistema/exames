@@ -222,8 +222,8 @@ export function LoginForm() {
                 <span className="text-white font-bold text-2xl">NB</span>
               </div>
               <h2 className="text-3xl font-bold text-gray-900">Recuperar Senha</h2>
-              <p className="text-gray-600 mt-2">NB Hub Exames</p>
-              <p className="text-sm text-gray-500">NB Sistema</p>
+              <p className="text-gray-600 mt-2">NB Sistema</p>
+              <p className="text-sm text-gray-500">Hub de Exames</p>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-6">
@@ -282,8 +282,8 @@ export function LoginForm() {
               <span className="text-white font-bold text-2xl">NB</span>
             </div>
             <h2 className="text-3xl font-bold text-gray-900">Bem-vindo</h2>
-            <p className="text-gray-600 mt-2">NB Hub Exames</p>
-            <p className="text-sm text-gray-500">NB Sistema</p>
+            <p className="text-gray-600 mt-2">NB Sistema</p>
+            <p className="text-sm text-gray-500">Hub de Exames</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -351,26 +351,23 @@ export function LoginForm() {
             </button>
 
             <div className="text-center mt-4 pt-4 border-t border-gray-200">
-              <button
+             <button
                 type="button"
                 onClick={() => setShowInitialSetup(true)}
                 className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
               >
-                Primeiro acesso? Criar administrador
+                Primeiro acesso? Fale com o administrador
               </button>
             </div>
           </form>
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
-              <strong>Importante:</strong>
-              <br />• <strong>Sistema híbrido de autenticação</strong>
-              <br />• Usuários existentes do Supabase Auth funcionam normalmente
-              <br />• Novos usuários são salvos na tabela public.users
-              <br />• Senha padrão para novos usuários: <code className="bg-blue-100 px-1 rounded">nb@123</code>
-              <br />• Migração automática de usuários existentes
-              <br />• Sessões duram 24 horas
-            </p>
+              <strong>NB Sistemas</strong>
+              <br />• <strong>Nosso Hub de Exames integra parceiros da área da saúde</strong>
+              <br />• Garantindo processos eficientes e resultados confiáveis
+              <br />• Entre com suas credenciais para começar!
+              </p>
           </div>
         </div>
 
