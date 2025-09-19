@@ -111,10 +111,10 @@ export function LoginForm() {
           <div className="bg-white rounded-xl shadow-lg p-8">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <span className="text-white font-bold text-2xl">NB</span>
+                <span className="text-white font-bold text-2xl">NB Sistema</span>
               </div>
               <h2 className="text-3xl font-bold text-gray-900">Setup Inicial</h2>
-              <p className="text-gray-600 mt-2">NB Hub Exames</p>
+              <p className="text-gray-600 mt-2">Hub Exames</p>
               <p className="text-sm text-gray-500">Criar primeiro usuário administrador</p>
             </div>
 
@@ -219,11 +219,11 @@ export function LoginForm() {
           <div className="bg-white rounded-xl shadow-lg p-8">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <span className="text-white font-bold text-2xl">NB</span>
+                <span className="text-white font-bold text-2xl">NB Sistema</span>
               </div>
               <h2 className="text-3xl font-bold text-gray-900">Recuperar Senha</h2>
-              <p className="text-gray-600 mt-2">NB Sistema</p>
-              <p className="text-sm text-gray-500">Hub de Exames</p>
+              <p className="text-gray-600 mt-2">Hub de Exames</p>
+              <p className="text-sm text-gray-500">Um sistema da NB Consultoria</p>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-6">
@@ -279,11 +279,11 @@ export function LoginForm() {
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-bold text-2xl">NB</span>
+              <span className="text-white font-bold text-2xl">NB Sistema</span>
             </div>
             <h2 className="text-3xl font-bold text-gray-900">Bem-vindo</h2>
-            <p className="text-gray-600 mt-2">NB Sistema</p>
-            <p className="text-sm text-gray-500">Hub de Exames</p>
+            <p className="text-gray-600 mt-2">Hub de Exames</p>
+            <p className="text-sm text-gray-500">Um sistema da NB Consultoria</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
