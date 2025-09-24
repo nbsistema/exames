@@ -292,8 +292,8 @@ export function LoginForm() {
             </h2>
             <p className="text-blue-100 text-lg leading-relaxed">
               Como braço tecnológico da <strong>NB Consultoria</strong>, desenvolvemos soluções 
-              inovadoras para otimizar processos de exames ocupacionais e promover 
-              ambientes de trabalho mais saudáveis e seguros.
+              inovadoras para otimizar processos clínicos e administrativos, promovendo mais segurança 
+             e confiabilidade das informações.
             </p>
           </div>
 
@@ -304,7 +304,7 @@ export function LoginForm() {
               </div>
               <div>
                 <h3 className="font-semibold text-white">Missão</h3>
-                <p className="text-blue-100 text-sm">Excelência em gestão de saúde ocupacional</p>
+                <p className="text-blue-100 text-sm">Excelência em gestão de saúde</p>
               </div>
             </div>
 
@@ -344,11 +344,11 @@ export function LoginForm() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-blue-200 font-semibold">NB Consultoria & Sistema</p>
-              <p className="text-blue-100 text-sm">Soluções completas em saúde ocupacional</p>
+              <p className="text-blue-100 text-sm">Soluções completas para sua empresa</p>
             </div>
             <div className="text-right">
-              <p className="text-blue-200 text-sm">📞 (11) 9999-9999</p>
-              <p className="text-blue-100 text-sm">✉️ contato@nbconsultoria.com.br</p>
+              <p className="text-blue-200 text-sm">📞 (98) 9999-9999</p>
+              <p className="text-blue-100 text-sm">✉️ administracao@nbconsultoria.net</p>
             </div>
           </div>
         </div>
@@ -463,7 +463,7 @@ export function LoginForm() {
                   onClick={() => setShowInitialSetup(true)}
                   className="text-sm text-gray-600 hover:text-gray-800 transition-colors font-medium"
                 >
-                  Primeiro acesso? Configure o sistema
+                  Primeiro acesso? Fale com a nossa equipe.
                 </button>
               </div>
             </form>
