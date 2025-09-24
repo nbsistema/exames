@@ -220,7 +220,7 @@ export function LoginForm() {
         <div className="max-w-md w-full space-y-8">
           <div className="bg-white rounded-xl shadow-lg p-8">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-24 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <span className="text-white font-bold text-2xl">NB Sistema</span>
               </div>
               <h2 className="text-3xl font-bold text-gray-900">Recuperar Senha</h2>
@@ -280,7 +280,7 @@ export function LoginForm() {
       <div className="max-w-md w-full space-y-8">
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
               <span className="text-white font-bold text-2xl">NB Sistema</span>
             </div>
             <h2 className="text-3xl font-bold text-gray-900">Bem-vindo</h2>
