@@ -479,7 +479,7 @@ export function LoginForm() {
 
           <div className="text-center">
             <p className="text-xs text-white/80">
-              © 2025 NB Sistema - Um braço da NB Consultoria. Todos os direitos reservados.
+              © 2025 NB Sistema & NB Consultoria. Todos os direitos reservados.
             </p>
           </div>
         </div>
