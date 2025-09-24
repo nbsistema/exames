@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Mail, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, UserPlus, Building, Target, Users, Shield, ArrowRight, Calendar } from 'lucide-react';
 import { databaseAuth } from '../lib/database-auth';
 
 type UserProfile = 'admin' | 'parceiro' | 'checkup' | 'recepcao';
@@ -80,21 +80,18 @@ export function LoginForm() {
 
     setLoading(true);
     try {
-      // 1) Fazer login via AuthContext
       const { error: signInError } = await signIn(email, password);
       if (signInError) {
         setError(signInError);
         return;
       }
 
-      // 2) Revalidar direto no banco para pegar o perfil correto
       const user = await databaseAuth.getCurrentUser();
       if (!user) {
         setError('Não foi possível carregar seu perfil. Tente novamente.');
         return;
       }
 
-      // 3) Redirecionar conforme o perfil do usuário
       setSuccess('Login bem-sucedido! Redirecionando...');
       
     } catch (err) {
@@ -106,16 +103,14 @@ export function LoginForm() {
 
   if (showInitialSetup) {
     return (
-     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-  <div className="max-w-md w-full space-y-8">
-    <div className="bg-white rounded-xl shadow-lg p-8">
-      <div className="text-center mb-8">
-        {/* Faixa azul ajustada */}
-        <div className="px-6 py-3 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-          <span className="text-white font-bold text-xl md:text-2xl">NB Sistema</span>
-        </div>
-
-        <h2 className="text-3xl font-bold text-gray-900">Setup Inicial</h2>
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 border border-white/20">
+            <div className="text-center mb-8">
+              <div className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl inline-flex items-center justify-center mb-4 shadow-lg">
+                <span className="text-white font-bold text-2xl">NB Sistema</span>
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900">Setup Inicial</h2>
               <p className="text-gray-600 mt-2">Hub Exames</p>
               <p className="text-sm text-gray-500">Criar primeiro usuário administrador</p>
             </div>
@@ -185,7 +180,7 @@ export function LoginForm() {
               <button
                 type="submit"
                 disabled={setupLoading}
-                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 transform hover:scale-[1.02]"
               >
                 {setupLoading ? 'Criando...' : 'Criar Administrador'}
               </button>
@@ -193,19 +188,18 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowInitialSetup(false)}
-                className="w-full text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                className="w-full text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium"
               >
-                Voltar ao login
+                ← Voltar ao login
               </button>
             </form>
 
-            <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-              <p className="text-sm text-yellow-800">
+            <div className="mt-6 p-4 bg-blue-50/50 rounded-lg border border-blue-100">
+              <p className="text-sm text-blue-800 font-medium">
                 <strong>Primeira execução:</strong>
                 <br />• O usuário será criado no sistema de autenticação
                 <br />• As tabelas do banco serão criadas automaticamente
                 <br />• Após criar, aguarde alguns segundos e faça login
-                <br />• Se houver erro, tente fazer login mesmo assim
               </p>
             </div>
           </div>
@@ -216,11 +210,11 @@ export function LoginForm() {
 
   if (showResetPassword) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-8">
-          <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 border border-white/20">
             <div className="text-center mb-8">
-              <div className="w-24 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <div className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl inline-flex items-center justify-center mb-4 shadow-lg">
                 <span className="text-white font-bold text-2xl">NB Sistema</span>
               </div>
               <h2 className="text-3xl font-bold text-gray-900">Recuperar Senha</h2>
@@ -256,7 +250,7 @@ export function LoginForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+                className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 transform hover:scale-[1.02]"
               >
                 {loading ? 'Enviando...' : 'Enviar Email de Recuperação'}
               </button>
@@ -264,9 +258,9 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowResetPassword(false)}
-                className="w-full text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                className="w-full text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium"
               >
-                Voltar ao login
+                ← Voltar ao login
               </button>
             </form>
           </div>
@@ -276,107 +270,220 @@ export function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="text-center mb-8">
-            <div className="w-24 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-bold text-2xl">NB Sistema</span>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex">
+      {/* Lado Esquerdo - Apresentação da Empresa */}
+      <div className="hidden lg:flex lg:flex-1 flex-col justify-between p-12 text-white">
+        <div className="space-y-8">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+              <Building className="w-8 h-8" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">Bem-vindo</h2>
-            <p className="text-gray-600 mt-2">Hub de Exames</p>
-            <p className="text-sm text-gray-500">Um sistema da NB Consultoria</p>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+                NB Sistema
+              </h1>
+              <p className="text-blue-200 text-lg">Hub de Exames</p>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="seu@email.com"
-                />
+          <div className="space-y-6 max-w-lg">
+            <h2 className="text-3xl font-bold leading-tight">
+              Transformando a gestão de saúde corporativa
+            </h2>
+            <p className="text-blue-100 text-lg leading-relaxed">
+              Como braço tecnológico da <strong>NB Consultoria</strong>, desenvolvemos soluções 
+              inovadoras para otimizar processos de exames ocupacionais e promover 
+              ambientes de trabalho mais saudáveis e seguros.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-white/20 rounded-lg mt-1">
+                <Target className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Missão</h3>
+                <p className="text-blue-100 text-sm">Excelência em gestão de saúde ocupacional</p>
               </div>
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Senha
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-white/20 rounded-lg mt-1">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Visão</h3>
+                <p className="text-blue-100 text-sm">Referência em tecnologia para saúde</p>
               </div>
             </div>
 
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800">{error}</p>
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-white/20 rounded-lg mt-1">
+                <Shield className="w-5 h-5" />
               </div>
-            )}
-
-            {success && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm text-green-800">{success}</p>
+              <div>
+                <h3 className="font-semibold text-white">Segurança</h3>
+                <p className="text-blue-100 text-sm">Dados protegidos e compliance total</p>
               </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-            >
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-
-            <div className="text-center mt-4 pt-4 border-t border-gray-200">
-             <button
-                type="button"
-                onClick={() => setShowInitialSetup(true)}
-                className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Primeiro acesso? Fale com o administrador
-              </button>
             </div>
-          </form>
 
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>NB Sistemas</strong>
-              <br />• Garantindo processos eficientes e resultados confiáveis.
-              <br />• Entre com suas credenciais para começar!
-              </p>
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-white/20 rounded-lg mt-1">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Experiência</h3>
+                <p className="text-blue-100 text-sm">+15 anos no mercado</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="text-center">
-          <p className="text-xs text-gray-500">© 2025 NB Sistema. Todos os direitos reservados.</p>
+        <div className="border-t border-white/20 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-200 font-semibold">NB Consultoria & Sistema</p>
+              <p className="text-blue-100 text-sm">Soluções completas em saúde ocupacional</p>
+            </div>
+            <div className="text-right">
+              <p className="text-blue-200 text-sm">📞 (11) 9999-9999</p>
+              <p className="text-blue-100 text-sm">✉️ contato@nbconsultoria.com.br</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lado Direito - Formulário de Login */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 border border-white/20">
+            <div className="text-center mb-8">
+              <div className="lg:hidden mb-6">
+                <div className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl inline-flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-2xl">NB Sistema</span>
+                </div>
+                <p className="text-gray-600 mt-2 text-lg">Hub de Exames</p>
+              </div>
+              
+              <h2 className="text-3xl font-bold text-gray-900">Acesse sua conta</h2>
+              <p className="text-gray-600 mt-2">Entre com suas credenciais para continuar</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="seu@email.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(true)}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                >
+                  Esqueceu sua senha?
+                </button>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800 flex items-center">
+                    <span className="mr-2">⚠️</span>
+                    {error}
+                  </p>
+                </div>
+              )}
+
+              {success && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-800 flex items-center">
+                    <span className="mr-2">✅</span>
+                    {success}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 transform hover:scale-[1.02]"
+              >
+                {loading ? (
+                  'Entrando...'
+                ) : (
+                  <>
+                    Entrar
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowInitialSetup(true)}
+                  className="text-sm text-gray-600 hover:text-gray-800 transition-colors font-medium"
+                >
+                  Primeiro acesso? Configure o sistema
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+              <p className="text-sm text-blue-800 font-medium">
+                <strong>💡 Dica de segurança:</strong>
+                <br />
+                Mantenha suas credenciais em local seguro e nunca as compartilhe com terceiros.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p className="text-xs text-white/80">
+              © 2025 NB Sistema - Um braço da NB Consultoria. Todos os direitos reservados.
+            </p>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
