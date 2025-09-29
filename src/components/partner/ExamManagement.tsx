@@ -1,4 +1,57 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, Eye, Edit } from 'lucide-react';
+import { supabase, ExamRequest, Doctor, Insurance, Partner } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
+export function ExamManagement() {
+  const [examRequests, setExamRequests] = useState<any[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [insurances, setInsurances] = useState<Insurance[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedExam, setSelectedExam] = useState<any>(null);
+  const [showObservations, setShowObservations] = useState(false);
+  const [observations, setObservations] = useState('');
+  const [formData, setFormData] = useState({
+    patient_name: '',
+    birth_date: '',
+    consultation_date: '',
+    doctor_id: '',
+    exam_type: '',
+    payment_type: 'particular' as 'particular' | 'convenio',
+    insurance_id: '',
+    partner_id: '',
+  });
+  const { user } = useAuth();
+
+  // 🔥 CORREÇÃO: Carregar partner_id primeiro
+  useEffect(() => {
+    if (user?.profile === 'parceiro') {
+      loadUserPartner();
+    } else {
+      loadData();
+    }
+  }, [user]);
+
+  // 🔥 NOVA FUNÇÃO: Carregar partner_id do usuário
+  const loadUserPartner = async () => {
+    try {
+      console.log('🔍 Buscando partner_id do usuário...');
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('partner_id, partners!inner(id, name)')
+        .eq('id', user.id)
+        .single();
+
+      if (userError) {
+        console.error('❌ Erro ao buscar partner_id:', userError);
+        return;
+      }
+
+      if (userData && userData.partner_id) {
         const partner = {
           id: userData.partner_id,
           name: userData.partners?.name || 'Parceiro'
@@ -21,8 +74,8 @@
     }
   };
 
-  // 🔥 CORREÇÃO: Receber partner_id como parâmetro
-  const loadData = async (userPartnerId?: string) => {
+  // 🔥 CORREÇÃO: useCallback para loadData
+  const loadData = useCallback(async (userPartnerId?: string) => {
     try {
       setLoading(true);
       
@@ -106,7 +159,7 @@
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, currentPartner]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +186,13 @@
 
       if (error) throw error;
 
-      await loadData();
+      // 🔥 CORREÇÃO: Passar o partner_id correto
+      if (user?.profile === 'parceiro' && currentPartner) {
+        await loadData(currentPartner.id);
+      } else {
+        await loadData();
+      }
+
       setShowForm(false);
       setFormData({
         patient_name: '',
@@ -154,13 +213,6 @@
     }
   };
 
-  // 🔥 CORREÇÃO: Recarregar dados quando currentPartner mudar
-  useEffect(() => {
-    if (currentPartner && user?.profile === 'parceiro') {
-      loadData(currentPartner.id);
-    }
-  }, [currentPartner]);
-
   const handleStatusUpdate = async (examId: string, newStatus: string) => {
     try {
       const { error } = await supabase
@@ -173,7 +225,13 @@
 
       if (error) throw error;
 
-      await loadData();
+      // 🔥 CORREÇÃO: Passar o partner_id correto
+      if (user?.profile === 'parceiro' && currentPartner) {
+        await loadData(currentPartner.id);
+      } else {
+        await loadData();
+      }
+
       setSelectedExam(null);
       setShowObservations(false);
       setObservations('');
@@ -183,6 +241,13 @@
       alert('Erro ao atualizar status');
     }
   };
+
+  // 🔥 CORREÇÃO: useEffect com dependências corretas
+  useEffect(() => {
+    if (currentPartner && user?.profile === 'parceiro') {
+      loadData(currentPartner.id);
+    }
+  }, [currentPartner, user, loadData]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -210,7 +275,8 @@
       </div>
     );
   }
- if (showForm) {
+
+  if (showForm) {
     console.log('🔍 Formulário - Médicos disponíveis:', doctors.length);
     console.log('🔍 Formulário - Convênios disponíveis:', insurances.length);
   }
