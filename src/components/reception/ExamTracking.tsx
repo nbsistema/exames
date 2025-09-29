@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Eye, Edit, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
+import React, { useState, useEffect } from 'react';
+import { Eye, Edit, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+
 export function ExamTracking() {
   const [examRequests, setExamRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,21 +20,52 @@ export function ExamTracking() {
   });
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set());
+  const [userProfile, setUserProfile] = useState<string>('');
+  const [userPartnerId, setUserPartnerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadUserInfo();
+  }, []);
 
   useEffect(() => {
     loadExamRequests();
-    
+  
     // Auto-refresh a cada 1 minuto
     const interval = setInterval(() => {
       refreshData();
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [filters]);
+  }, [filters, userProfile, userPartnerId]);
+
+  // Função para carregar informações do usuário logado
+  const loadUserInfo = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('profile, partner_id')
+          .eq('id', user.id)
+          .single();
+      
+        if (userData) {
+          setUserProfile(userData.profile || '');
+          setUserPartnerId(userData.partner_id);
+          console.log('👤 Usuário logado:', {
+            profile: userData.profile,
+            partnerId: userData.partner_id
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user info:', error);
+    }
+  };
 
   const loadExamRequests = async (showLoader = true) => {
     if (showLoader) setLoading(true);
-    
+  
     try {
       let query = supabase
         .from('exam_requests')
@@ -41,6 +76,14 @@ export function ExamTracking() {
           partners(name)
         `)
         .order('created_at', { ascending: false });
+
+      // 🔒 FILTRO POR PARCEIRO - usuários parceiros veem apenas seus exames
+      if (userProfile === 'parceiro' && userPartnerId) {
+        console.log('🔒 Filtrando exames do parceiro:', userPartnerId);
+        query = query.eq('partner_id', userPartnerId);
+      } else if (userProfile === 'parceiro') {
+        console.log('⚠️ Parceiro sem partner_id definido - mostrando todos os exames');
+      }
 
       if (filters.status) {
         query = query.eq('status', filters.status);
@@ -57,6 +100,8 @@ export function ExamTracking() {
       const { data, error } = await query;
 
       if (error) throw error;
+    
+      console.log('📊 Exames carregados:', data?.length, 'Perfil:', userProfile, 'Partner ID:', userPartnerId);
       setExamRequests(data || []);
       setLastUpdate(new Date());
     } catch (error) {
@@ -66,6 +111,7 @@ export function ExamTracking() {
     }
   };
 
+  // 🔥 ADICIONE ESTAS FUNÇÕES QUE ESTAVAM FALTANDO:
   const refreshData = async () => {
     setRefreshing(true);
     await loadExamRequests(false);
