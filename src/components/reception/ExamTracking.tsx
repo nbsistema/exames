@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Edit, Filter, RefreshCw } from 'lucide-react';
+import { Eye, Edit, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function ExamTracking() {
@@ -15,6 +15,7 @@ export function ExamTracking() {
     patientName: '',
   });
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadExamRequests();
@@ -94,6 +95,41 @@ export function ExamTracking() {
       console.error('Error updating status:', error);
       alert('Erro ao atualizar status');
     }
+  };
+
+  const toggleExamExpansion = (examId: string) => {
+    const newExpanded = new Set(expandedExams);
+    if (newExpanded.has(examId)) {
+      newExpanded.delete(examId);
+    } else {
+      newExpanded.add(examId);
+    }
+    setExpandedExams(newExpanded);
+  };
+
+  const formatExamType = (examType: string, examId: string) => {
+    const maxLength = 50; // Número máximo de caracteres antes de truncar
+    const isExpanded = expandedExams.has(examId);
+
+    if (examType.length <= maxLength || isExpanded) {
+      return examType;
+    }
+
+    return (
+      <div className="flex flex-col space-y-1">
+        <span className="truncate">{examType.substring(0, maxLength)}...</span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleExamExpansion(examId);
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 self-start"
+        >
+          <span>+ ver mais</span>
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      </div>
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -303,8 +339,22 @@ export function ExamTracking() {
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {exam.doctors?.name || 'N/A'}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {exam.exam_type}
+                    <td className="px-4 py-4 text-sm text-gray-500 max-w-xs">
+                      <div className="break-words">
+                        {formatExamType(exam.exam_type, exam.id)}
+                        {expandedExams.has(exam.id) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExamExpansion(exam.id);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 mt-1"
+                          >
+                            <span>ver menos</span>
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(exam.status)}`}>
