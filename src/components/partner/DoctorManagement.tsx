@@ -19,27 +19,50 @@ export function DoctorManagement() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]); // Adicione user como dependência
 
   const loadData = async () => {
     try {
-      // Carregar parceiros
-      const { data: partnersData, error: partnersError } = await supabase
-        .from('partners')
-        .select('*')
-        .order('name');
+      // Carregar parceiros (apenas admin vê todos)
+      if (user?.profile === 'admin') {
+        const { data: partnersData, error: partnersError } = await supabase
+          .from('partners')
+          .select('*')
+          .order('name');
 
-      if (partnersError) throw partnersError;
-      setPartners(partnersData || []);
-
-      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
-      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
-        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
-        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
+        if (partnersError) throw partnersError;
+        setPartners(partnersData || []);
       }
 
-      // Carregar médicos
-      const { data: doctorsData, error: doctorsError } = await supabase
+      // 🔥 CORREÇÃO: Buscar o partner_id CORRETO do usuário logado
+      if (user?.profile === 'parceiro') {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('partner_id, partners(name)')
+          .eq('id', user.id)
+          .single();
+
+        if (userError) {
+          console.error('❌ Erro ao buscar partner_id do usuário:', userError);
+        } else if (userData && userData.partner_id) {
+          console.log('🔍 Partner_id do usuário logado:', {
+            partner_id: userData.partner_id,
+            partner_name: userData.partners?.name
+          });
+          
+          setCurrentPartner({
+            id: userData.partner_id,
+            name: userData.partners?.name || 'Parceiro'
+          });
+          setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
+        } else {
+          console.error('❌ Usuário parceiro sem partner_id definido');
+          alert('Erro: Parceiro não vinculado. Contate o administrador.');
+        }
+      }
+
+      // 🔥 CORREÇÃO: Carregar médicos com filtro por partner_id
+      let doctorsQuery = supabase
         .from('doctors')
         .select(`
           *,
@@ -47,8 +70,17 @@ export function DoctorManagement() {
         `)
         .order('created_at', { ascending: false });
 
+      // Aplicar filtro: parceiros veem apenas seus médicos, admin vê todos
+      if (user?.profile === 'parceiro' && currentPartner?.id) {
+        console.log('🔍 Filtrando médicos do parceiro:', currentPartner.id);
+        doctorsQuery = doctorsQuery.eq('partner_id', currentPartner.id);
+      }
+
+      const { data: doctorsData, error: doctorsError } = await doctorsQuery;
+
       if (doctorsError) throw doctorsError;
       setDoctors(doctorsData || []);
+
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -61,7 +93,12 @@ export function DoctorManagement() {
     setLoading(true);
 
     try {
-      console.log('👨‍⚕️ Criando médico:', formData);
+      // 🔍 DEBUG: Verificar dados antes de enviar
+      console.log('👨‍⚕️ Criando médico:', {
+        ...formData,
+        user_profile: user?.profile,
+        current_partner: currentPartner
+      });
       
       const { error } = await supabase
         .from('doctors')
@@ -86,6 +123,12 @@ export function DoctorManagement() {
   };
 
   const handleEdit = (doctor: Doctor) => {
+    // 🔥 CORREÇÃO: Verificar permissão de edição
+    if (user?.profile === 'parceiro' && doctor.partner_id !== currentPartner?.id) {
+      alert('Você não tem permissão para editar este médico');
+      return;
+    }
+
     setEditingDoctor(doctor);
     setFormData({
       name: doctor.name,
@@ -98,6 +141,12 @@ export function DoctorManagement() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDoctor) return;
+    
+    // 🔥 CORREÇÃO: Verificar permissão de atualização
+    if (user?.profile === 'parceiro' && editingDoctor.partner_id !== currentPartner?.id) {
+      alert('Você não tem permissão para atualizar este médico');
+      return;
+    }
     
     setLoading(true);
 
@@ -142,6 +191,13 @@ export function DoctorManagement() {
       return;
     }
 
+    // 🔥 CORREÇÃO: Verificar permissão de exclusão
+    const doctorToDelete = doctors.find(d => d.id === doctorId);
+    if (user?.profile === 'parceiro' && doctorToDelete?.partner_id !== currentPartner?.id) {
+      alert('Você não tem permissão para excluir este médico');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -179,10 +235,21 @@ export function DoctorManagement() {
     });
   };
 
+  // 🔥 CORREÇÃO: Filtrar parceiros para admin (apenas parceiros ativos)
+  const availablePartners = user?.profile === 'admin' 
+    ? partners 
+    : currentPartner ? [currentPartner] : [];
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-900">Gestão de Médicos</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Gestão de Médicos</h2>
+          <p className="text-sm text-gray-600">
+            {doctors.length} médico{doctors.length !== 1 ? 's' : ''} cadastrado{doctors.length !== 1 ? 's' : ''}
+            {currentPartner && ` para ${currentPartner.name}`}
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -229,7 +296,7 @@ export function DoctorManagement() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Selecione um parceiro</option>
-                  {partners.map((partner) => (
+                  {availablePartners.map((partner) => (
                     <option key={partner.id} value={partner.id}>
                       {partner.name}
                     </option>
@@ -281,42 +348,50 @@ export function DoctorManagement() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {doctors.map((doctor) => (
-              <tr key={doctor.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {doctor.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {doctor.crm}
-                </td>
-                {user?.profile === 'admin' && (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {doctor.partners?.name || 'N/A'}
-                  </td>
-                )}
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(doctor.created_at).toLocaleDateString('pt-BR')}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEdit(doctor)}
-                      className="text-blue-600 hover:text-blue-800 transition-colors"
-                      title="Editar médico"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(doctor.id, doctor.name)}
-                      className="text-red-600 hover:text-red-800 transition-colors"
-                      title="Excluir médico"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+            {doctors.length === 0 ? (
+              <tr>
+                <td colSpan={user?.profile === 'admin' ? 5 : 4} className="px-6 py-8 text-center text-gray-500">
+                  {loading ? 'Carregando...' : 'Nenhum médico cadastrado'}
                 </td>
               </tr>
-            ))}
+            ) : (
+              doctors.map((doctor) => (
+                <tr key={doctor.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {doctor.name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {doctor.crm}
+                  </td>
+                  {user?.profile === 'admin' && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {doctor.partners?.name || 'N/A'}
+                    </td>
+                  )}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(doctor.created_at).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleEdit(doctor)}
+                        className="text-blue-600 hover:text-blue-800 transition-colors"
+                        title="Editar médico"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(doctor.id, doctor.name)}
+                        className="text-red-600 hover:text-red-800 transition-colors"
+                        title="Excluir médico"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
