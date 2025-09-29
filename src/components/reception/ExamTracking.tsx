@@ -2,21 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Eye, Edit, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-import React, { useState, useEffect } from 'react';
-import { Eye, Edit, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-
 export function ExamTracking() {
   const [examRequests, setExamRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedExam, setSelectedExam] = useState<any>(null);
-  const [showObservations, setShowObservations] = useState(false);
-  const [observations, setObservations] = useState('');
+  const [showConduct, setShowConduct] = useState(false);
+  const [conductData, setConductData] = useState({
+    conduct: '' as 'cirurgica' | 'ambulatorial' | '',
+    conduct_observations: ''
+  });
   const [filters, setFilters] = useState({
     status: '',
     paymentType: '',
     patientName: '',
+    conduct: ''
   });
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set());
@@ -97,6 +97,10 @@ export function ExamTracking() {
         query = query.ilike('patient_name', `%${filters.patientName}%`);
       }
 
+      if (filters.conduct) {
+        query = query.eq('conduct', filters.conduct);
+      }
+
       const { data, error } = await query;
 
       if (error) throw error;
@@ -111,31 +115,52 @@ export function ExamTracking() {
     }
   };
 
-  // 🔥 ADICIONE ESTAS FUNÇÕES QUE ESTAVAM FALTANDO:
   const refreshData = async () => {
     setRefreshing(true);
     await loadExamRequests(false);
     setRefreshing(false);
   };
 
-  const handleStatusUpdate = async (examId: string, newStatus: string) => {
+  // 🔥 ATUALIZADO: Função para atualizar conduta
+  const handleConductUpdate = async (examId: string) => {
     try {
-      const updateData: any = { status: newStatus };
-      if (newStatus === 'intervencao') {
-        updateData.observations = observations;
-      }
-
       const { error } = await supabase
         .from('exam_requests')
-        .update(updateData)
+        .update({ 
+          conduct: conductData.conduct,
+          conduct_observations: conductData.conduct_observations
+        })
         .eq('id', examId);
 
       if (error) throw error;
 
       await loadExamRequests(false);
       setSelectedExam(null);
-      setShowObservations(false);
-      setObservations('');
+      setShowConduct(false);
+      setConductData({
+        conduct: '',
+        conduct_observations: ''
+      });
+      alert('Conduta registrada com sucesso!');
+    } catch (error) {
+      console.error('Error updating conduct:', error);
+      alert('Erro ao registrar conduta');
+    }
+  };
+
+  // 🔥 ATUALIZADO: Função para atualizar status (apenas encaminhado/executado)
+  const handleStatusUpdate = async (examId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('exam_requests')
+        .update({ 
+          status: newStatus
+        })
+        .eq('id', examId);
+
+      if (error) throw error;
+
+      await loadExamRequests(false);
       alert('Status atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating status:', error);
@@ -178,23 +203,40 @@ export function ExamTracking() {
     );
   };
 
+  // 🔥 ATUALIZADO: Cores dos status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'encaminhado':
         return 'bg-blue-100 text-blue-800';
       case 'executado':
         return 'bg-green-100 text-green-800';
-      case 'intervencao':
-        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
+  // 🔥 ATUALIZADO: Labels dos status
   const statusLabels = {
     encaminhado: 'Encaminhado ao CTR',
-    executado: 'Executado',
-    intervencao: 'Intervenção'
+    executado: 'Executado'
+  };
+
+  // 🔥 NOVO: Cores para conduta
+  const getConductColor = (conduct: string) => {
+    switch (conduct) {
+      case 'cirurgica':
+        return 'bg-red-100 text-red-800';
+      case 'ambulatorial':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // 🔥 NOVO: Labels para conduta
+  const conductLabels = {
+    cirurgica: 'Cirúrgica',
+    ambulatorial: 'Ambulatorial'
   };
 
   const formatLastUpdate = () => {
@@ -230,7 +272,7 @@ export function ExamTracking() {
           <Filter className="w-4 h-4 mr-2" />
           Filtros
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
             <input
@@ -255,9 +297,6 @@ export function ExamTracking() {
               <option value="executado">
                 Executado ({examRequests.filter(e => e.status === 'executado').length})
               </option>
-              <option value="intervencao">
-                Intervenção ({examRequests.filter(e => e.status === 'intervencao').length})
-              </option>
             </select>
           </div>
           <div>
@@ -276,35 +315,71 @@ export function ExamTracking() {
               </option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Conduta</label>
+            <select
+              value={filters.conduct}
+              onChange={(e) => setFilters({ ...filters, conduct: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Todas</option>
+              <option value="cirurgica">
+                Cirúrgica ({examRequests.filter(e => e.conduct === 'cirurgica').length})
+              </option>
+              <option value="ambulatorial">
+                Ambulatorial ({examRequests.filter(e => e.conduct === 'ambulatorial').length})
+              </option>
+              <option value="null">
+                Não definida ({examRequests.filter(e => !e.conduct).length})
+              </option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {showObservations && selectedExam && (
+      {/* 🔥 ATUALIZADO: Modal para Conduta (substitui o de intervenção) */}
+      {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Adicionar Observações - Intervenção</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Conduta</label>
+              <select
+                required
+                value={conductData.conduct}
+                onChange={(e) => setConductData({ ...conductData, conduct: e.target.value as 'cirurgica' | 'ambulatorial' })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Selecione a conduta</option>
+                <option value="cirurgica">Cirúrgica</option>
+                <option value="ambulatorial">Ambulatorial</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Observações da Conduta</label>
               <textarea
                 rows={4}
-                value={observations}
-                onChange={(e) => setObservations(e.target.value)}
+                value={conductData.conduct_observations}
+                onChange={(e) => setConductData({ ...conductData, conduct_observations: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Descreva as observações da intervenção..."
+                placeholder="Descreva as observações da conduta..."
               />
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => handleStatusUpdate(selectedExam.id, 'intervencao')}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                onClick={() => handleConductUpdate(selectedExam.id)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Confirmar Intervenção
+                Confirmar Conduta
               </button>
               <button
                 onClick={() => {
-                  setShowObservations(false);
+                  setShowConduct(false);
                   setSelectedExam(null);
-                  setObservations('');
+                  setConductData({
+                    conduct: '',
+                    conduct_observations: ''
+                  });
                 }}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
@@ -357,6 +432,9 @@ export function ExamTracking() {
                     Status
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Conduta
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tipo
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -407,6 +485,15 @@ export function ExamTracking() {
                         {statusLabels[exam.status as keyof typeof statusLabels]}
                       </span>
                     </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {exam.conduct ? (
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)}`}>
+                          {conductLabels[exam.conduct as keyof typeof conductLabels]}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">Não definida</span>
+                      )}
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`}
                     </td>
@@ -427,20 +514,26 @@ export function ExamTracking() {
                             <Eye className="w-4 h-4" />
                           </button>
                         )}
+                        {/* 🔥 ATUALIZADO: Botão para conduta (apenas para exames executados) */}
                         {exam.status === 'executado' && (
                           <button
                             onClick={() => {
                               setSelectedExam(exam);
-                              setShowObservations(true);
+                              setConductData({
+                                conduct: exam.conduct || '',
+                                conduct_observations: exam.conduct_observations || ''
+                              });
+                              setShowConduct(true);
                             }}
-                            className="text-orange-600 hover:text-orange-800 transition-colors"
-                            title="Marcar como Intervenção"
+                            className="text-blue-600 hover:text-blue-800 transition-colors"
+                            title="Registrar Conduta"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                         )}
-                        {exam.observations && (
-                          <div className="text-xs text-gray-500" title={exam.observations}>
+                        {/* 🔥 NOVO: Ícone para observações da conduta */}
+                        {exam.conduct_observations && (
+                          <div className="text-xs text-gray-500" title={exam.conduct_observations}>
                             📝
                           </div>
                         )}
