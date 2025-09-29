@@ -16,12 +16,59 @@ export function InsuranceManagement() {
   });
   const { user } = useAuth();
 
+  // 🔥 CORREÇÃO: Adicionar user como dependência
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
+
+  // 🔥 NOVA FUNÇÃO: Carregar partner_id do usuário
+  const loadUserPartner = async () => {
+    try {
+      console.log('🔍 Buscando partner_id do usuário parceiro...', user?.id);
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('partner_id, partners!inner(id, name)')
+        .eq('id', user.id)
+        .single();
+
+      if (userError) {
+        console.error('❌ Erro ao buscar partner_id do usuário:', userError);
+        return null;
+      }
+
+      if (userData && userData.partner_id) {
+        const partner = {
+          id: userData.partner_id,
+          name: userData.partners?.name || 'Parceiro'
+        };
+        
+        console.log('✅ Partner do usuário carregado:', partner);
+        return partner;
+      } else {
+        console.error('❌ Usuário parceiro sem partner_id definido');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error loading user partner:', error);
+      return null;
+    }
+  };
 
   const loadData = async () => {
     try {
+      setLoading(true);
+
+      // 🔥 CORREÇÃO: Buscar partner_id correto para usuários parceiros
+      let userPartner = null;
+      if (user?.profile === 'parceiro') {
+        userPartner = await loadUserPartner();
+        setCurrentPartner(userPartner);
+        if (userPartner) {
+          setFormData(prev => ({ ...prev, partner_id: userPartner.id }));
+        }
+      }
+
       // Carregar parceiros
       const { data: partnersData, error: partnersError } = await supabase
         .from('partners')
@@ -31,14 +78,8 @@ export function InsuranceManagement() {
       if (partnersError) throw partnersError;
       setPartners(partnersData || []);
 
-      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
-      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
-        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
-        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
-      }
-
-      // Carregar convênios
-      const { data: insurancesData, error: insurancesError } = await supabase
+      // 🔥 CORREÇÃO: Query de convênios com filtro por partner_id
+      let insurancesQuery = supabase
         .from('insurances')
         .select(`
           *,
@@ -46,8 +87,24 @@ export function InsuranceManagement() {
         `)
         .order('created_at', { ascending: false });
 
+      // Parceiros veem apenas seus convênios
+      if (user?.profile === 'parceiro' && userPartner) {
+        console.log('🎯 Filtrando convênios do partner:', userPartner.id);
+        insurancesQuery = insurancesQuery.eq('partner_id', userPartner.id);
+      }
+
+      const { data: insurancesData, error: insurancesError } = await insurancesQuery;
+
       if (insurancesError) throw insurancesError;
       setInsurances(insurancesData || []);
+
+      console.log('📊 Convênios carregados:', {
+        total: insurancesData?.length,
+        perfil: user?.profile,
+        partner: userPartner?.name,
+        convênios: insurancesData?.map(i => ({ name: i.name, partner_id: i.partner_id }))
+      });
+
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -60,11 +117,21 @@ export function InsuranceManagement() {
     setLoading(true);
 
     try {
-      console.log('💳 Criando convênio:', formData);
+      console.log('💳 Criando convênio:', {
+        ...formData,
+        user_profile: user?.profile,
+        current_partner: currentPartner
+      });
       
+      // 🔥 CORREÇÃO: Para usuários parceiros, garantir que partner_id está correto
+      const submitData = { ...formData };
+      if (user?.profile === 'parceiro' && currentPartner) {
+        submitData.partner_id = currentPartner.id;
+      }
+
       const { error } = await supabase
         .from('insurances')
-        .insert([formData]);
+        .insert([submitData]);
 
       if (error) throw error;
 
@@ -99,14 +166,21 @@ export function InsuranceManagement() {
     setLoading(true);
 
     try {
-      console.log('✏️ Atualizando convênio:', editingInsurance.id, insuranceName);
+      console.log('✏️ Atualizando convênio:', editingInsurance.id, editingInsurance.name);
       
+      // 🔥 CORREÇÃO: Para usuários parceiros, garantir que partner_id está correto
+      const updateData = {
+        name: formData.name.trim(),
+        partner_id: formData.partner_id,
+      };
+
+      if (user?.profile === 'parceiro' && currentPartner) {
+        updateData.partner_id = currentPartner.id;
+      }
+
       const { error } = await supabase
         .from('insurances')
-        .update({
-          name: formData.name.trim(),
-          partner_id: formData.partner_id,
-        })
+        .update(updateData)
         .eq('id', editingInsurance.id);
 
       if (error) {
@@ -186,11 +260,30 @@ export function InsuranceManagement() {
         </button>
       </div>
 
+      {/* 🔥 ADICIONAR: Info sobre partner atual */}
+      {user?.profile === 'parceiro' && currentPartner && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            📍 Visualizando e cadastrando convênios para: <strong>{currentPartner.name}</strong>
+          </p>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             {editingInsurance ? 'Editar Convênio' : 'Cadastrar Novo Convênio'}
           </h3>
+          
+          {/* 🔥 ADICIONAR: Aviso para parceiros */}
+          {user?.profile === 'parceiro' && currentPartner && (
+            <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <p className="text-sm text-gray-600">
+                Este convênio será vinculado ao parceiro: <strong>{currentPartner.name}</strong>
+              </p>
+            </div>
+          )}
+
           <form onSubmit={editingInsurance ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Convênio</label>
@@ -203,6 +296,8 @@ export function InsuranceManagement() {
                 placeholder="Ex: Unimed, Bradesco Saúde"
               />
             </div>
+            
+            {/* 🔥 CORREÇÃO: Campo partner_id apenas para admin */}
             {user?.profile === 'admin' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
@@ -221,7 +316,17 @@ export function InsuranceManagement() {
                 </select>
               </div>
             )}
-            <div className="flex items-end space-x-3">
+
+            {/* 🔥 ADICIONAR: Campo partner_id escondido para parceiros */}
+            {user?.profile === 'parceiro' && currentPartner && (
+              <input
+                type="hidden"
+                value={currentPartner.id}
+                onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+              />
+            )}
+
+            <div className="flex items-end space-x-3 md:col-span-2">
               <button
                 type="submit"
                 disabled={loading}
