@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertTriangle, Building } from 'lucide-react';
 import { supabase, supabaseAdmin, UserProfile } from '../../lib/supabase';
 import { databaseAuth } from '../../lib/database-auth';
 
@@ -7,15 +7,24 @@ interface AppUser {
   id: string;
   email: string;
   name: string;
-  profile: UserProfile;      // sempre o do DB
+  profile: UserProfile;
+  partner_id?: string;
+  partner_name?: string;
   created_at: string;
   updated_at: string;
-  _authProfile?: UserProfile | null;   // diagnóstico
-  _profileMismatch?: boolean;          // diagnóstico
+  _authProfile?: UserProfile | null;
+  _profileMismatch?: boolean;
+}
+
+interface Partner {
+  id: string;
+  name: string;
+  company_type: string;
 }
 
 export function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -24,11 +33,27 @@ export function UserManagement() {
     name: '',
     email: '',
     profile: 'parceiro' as UserProfile,
+    partner_id: '' as string | undefined,
   });
 
   useEffect(() => {
+    loadPartners();
     loadUsers();
   }, []);
+
+  const loadPartners = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('partners')
+        .select('id, name, company_type')
+        .order('name');
+
+      if (error) throw error;
+      setPartners(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar parceiros:', error);
+    }
+  };
 
   const loadUsers = async () => {
     if (!supabase) {
@@ -41,7 +66,7 @@ export function UserManagement() {
     try {
       console.log('📋 Carregando usuários (auth.users + public.users)…');
 
-      // 1) Lista auth.users (precisa service role)
+      // 1) Lista auth.users
       if (!supabaseAdmin) {
         console.error('❌ Service Role Key não configurada');
         setUsers([]);
@@ -54,10 +79,19 @@ export function UserManagement() {
         return;
       }
 
-      // 2) Busca perfis no DB (somente DB é fonte da verdade do perfil)
+      // 2) Busca perfis no DB com informações do parceiro
       const { data: profiles, error: profileError } = await supabase
         .from('users')
-        .select('id, email, name, profile, created_at, updated_at') // <- inclui email
+        .select(`
+          id, 
+          email, 
+          name, 
+          profile, 
+          partner_id,
+          partners!inner (id, name),
+          created_at, 
+          updated_at
+        `)
         .order('created_at', { ascending: false });
 
       if (profileError) {
@@ -66,7 +100,7 @@ export function UserManagement() {
         return;
       }
 
-      // 3) Combina SEM fallback de profile para metadata (apenas DB)
+      // 3) Combina os dados
       const combinedUsers: AppUser[] = authUsers.users.map((au) => {
         const db = profiles?.find((p) => p.id === au.id);
         const authProfile = (au.user_metadata?.profile ?? null) as UserProfile | null;
@@ -77,16 +111,13 @@ export function UserManagement() {
           db?.profile != null &&
           String(authProfile) !== String(db.profile);
 
-        // log de diagnóstico
-        console.log(
-          `[perfil] ${au.email} -> DB=${db?.profile ?? '—'} | AUTH=${authProfile ?? '—'} | mismatch=${mismatch}`
-        );
-
         return {
           id: au.id,
           email: db?.email || au.email || '',
           name: db?.name || au.user_metadata?.name || au.email?.split('@')[0] || 'Usuário',
-          profile: effectiveProfile, // <- só DB
+          profile: effectiveProfile,
+          partner_id: db?.partner_id || undefined,
+          partner_name: db?.partners?.name || undefined,
           created_at: db?.created_at || au.created_at,
           updated_at: db?.updated_at || au.updated_at || au.created_at,
           _authProfile: authProfile,
@@ -129,13 +160,13 @@ export function UserManagement() {
         .eq('email', email)
         .single();
 
-      if (checkDbError && checkDbError.code !== 'PGRST116') { // PGRST116 = não encontrado
+      if (checkDbError && checkDbError.code !== 'PGRST116') {
         console.error('❌ Erro ao verificar usuário existente no DB:', checkDbError);
         alert(`Erro ao verificar usuário no DB: ${checkDbError.message}`);
         return;
       }
 
-      // 2) Verifica se o usuário já existe no auth.users (opcional, mas útil para evitar duplicatas)
+      // 2) Verifica se o usuário já existe no auth.users
       const { data: authUsers, error: checkAuthError } = await supabaseAdmin.auth.admin.listUsers();
       if (checkAuthError) {
         console.error('❌ Erro ao verificar auth.users:', checkAuthError);
@@ -148,7 +179,6 @@ export function UserManagement() {
       let userId: string;
 
       if (existingAuthUser) {
-        // Usuário já existe no auth, usaremos o ID existente
         userId = existingAuthUser.id;
         console.log('Usuário existente encontrado no auth, atualizando...');
       } else {
@@ -157,7 +187,10 @@ export function UserManagement() {
           email: email,
           password: 'nb@123',
           email_confirm: true,
-          user_metadata: { name: formData.name.trim(), profile: formData.profile },
+          user_metadata: { 
+            name: formData.name.trim(), 
+            profile: formData.profile 
+          },
         });
 
         if (authError) {
@@ -170,7 +203,7 @@ export function UserManagement() {
         console.log('Novo usuário criado no auth:', userId);
       }
 
-      // 3) Upsert no DB (insere ou atualiza baseado no id)
+      // 3) Upsert no DB com partner_id
       const { error: dbError } = await supabase
         .from('users')
         .upsert({
@@ -178,7 +211,8 @@ export function UserManagement() {
           email: email,
           name: formData.name.trim(),
           profile: formData.profile,
-          created_at: existingDbUser ? undefined : new Date().toISOString(), // Mantém created_at se existente
+          partner_id: formData.partner_id || null,
+          created_at: existingDbUser ? undefined : new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
 
@@ -188,10 +222,13 @@ export function UserManagement() {
         return;
       }
 
-      // 4) Atualiza metadata no auth para consistência (se necessário)
+      // 4) Atualiza metadata no auth para consistência
       if (existingAuthUser) {
         const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-          user_metadata: { name: formData.name.trim(), profile: formData.profile },
+          user_metadata: { 
+            name: formData.name.trim(), 
+            profile: formData.profile 
+          },
         });
         if (updateAuthError) {
           console.warn('⚠️ Erro ao atualizar metadata no auth:', updateAuthError);
@@ -200,7 +237,7 @@ export function UserManagement() {
 
       await loadUsers();
       setShowForm(false);
-      setFormData({ name: '', email: '', profile: 'parceiro' });
+      setFormData({ name: '', email: '', profile: 'parceiro', partner_id: '' });
       alert(
         'Usuário criado/atualizado com sucesso!\n\nCredenciais de acesso:\n• Email: ' +
           formData.email +
@@ -219,7 +256,8 @@ export function UserManagement() {
     setFormData({
       name: user.name,
       email: user.email,
-      profile: user.profile, // valor atual do DB
+      profile: user.profile,
+      partner_id: user.partner_id || '',
     });
     setShowForm(true);
   };
@@ -232,7 +270,7 @@ export function UserManagement() {
     try {
       console.log('✏️ Atualizando usuário:', editingUser.id, formData);
 
-      // 1) Mantém AUTH consistente (opcional, mas recomendável)
+      // 1) Atualiza metadata no auth
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(editingUser.id, {
         user_metadata: {
           name: formData.name.trim(),
@@ -245,12 +283,13 @@ export function UserManagement() {
         return;
       }
 
-      // 2) Atualiza no DB (RLS: admin deve ter policy p/ update)
+      // 2) Atualiza no DB incluindo partner_id
       const { error: profileError } = await supabase
         .from('users')
         .update({
           name: formData.name.trim(),
           profile: formData.profile,
+          partner_id: formData.partner_id || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', editingUser.id);
@@ -264,7 +303,7 @@ export function UserManagement() {
       await loadUsers();
       setShowForm(false);
       setEditingUser(null);
-      setFormData({ name: '', email: '', profile: 'parceiro' });
+      setFormData({ name: '', email: '', profile: 'parceiro', partner_id: '' });
       alert('Usuário atualizado com sucesso!');
     } catch (error) {
       console.error('❌ Erro interno na atualização:', error);
@@ -293,14 +332,14 @@ export function UserManagement() {
         return;
       }
 
-      // 2) remove do DB (caso não exista trigger)
+      // 2) remove do DB
       const { error: deleteProfileError } = await supabase
         .from('users')
         .delete()
         .eq('id', userId);
 
       if (deleteProfileError) {
-        console.warn('⚠️ Erro ao excluir perfil (usuário já removido do auth):', deleteProfileError);
+        console.warn('⚠️ Erro ao excluir perfil:', deleteProfileError);
       }
 
       await loadUsers();
@@ -316,7 +355,7 @@ export function UserManagement() {
   const resetForm = () => {
     setShowForm(false);
     setEditingUser(null);
-    setFormData({ name: '', email: '', profile: 'parceiro' });
+    setFormData({ name: '', email: '', profile: 'parceiro', partner_id: '' });
   };
 
   const profileLabels: Record<UserProfile, string> = {
@@ -385,7 +424,7 @@ export function UserManagement() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             {editingUser ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
           </h3>
-          <form onSubmit={editingUser ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <form onSubmit={editingUser ? handleUpdate : handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
               <input
@@ -425,7 +464,23 @@ export function UserManagement() {
                 <option value="admin">Administrador</option>
               </select>
             </div>
-            <div className="md:col-span-3 flex space-x-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro (opcional)</label>
+              <select
+                value={formData.partner_id || ''}
+                onChange={(e) => setFormData({ ...formData, partner_id: e.target.value || undefined })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Nenhum parceiro</option>
+                {partners.map((partner) => (
+                  <option key={partner.id} value={partner.id}>
+                    {partner.name} ({partner.company_type})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Apenas para usuários parceiros</p>
+            </div>
+            <div className="md:col-span-4 flex space-x-3">
               <button
                 type="submit"
                 disabled={submitting}
@@ -450,6 +505,7 @@ export function UserManagement() {
                 <br />• Senha padrão: <code className="bg-blue-100 px-1 rounded">nb@123</code>
                 <br />• Usuário é criado no <code>auth.users</code> e em <code>public.users</code> com o perfil selecionado
                 <br />• Email confirmado automaticamente
+                <br />• Parceiro é opcional e pode ser atribuído posteriormente
               </p>
             </div>
           )}
@@ -464,6 +520,7 @@ export function UserManagement() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Perfil</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parceiro</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criado em</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
@@ -471,7 +528,7 @@ export function UserManagement() {
             <tbody className="bg-white divide-y divide-gray-200">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     {loading ? 'Carregando usuários...' : 'Nenhum usuário cadastrado'}
                   </td>
                 </tr>
@@ -491,6 +548,16 @@ export function UserManagement() {
                           <AlertTriangle className="w-3 h-3" />
                           Divergência
                         </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {user.partner_name ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800">
+                          <Building className="w-3 h-3" />
+                          {user.partner_name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
