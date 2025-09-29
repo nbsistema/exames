@@ -30,50 +30,53 @@ export function ExamManagement() {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    try {
-      // Carregar parceiros
-      const { data: partnersData, error: partnersError } = await supabase
-        .from('partners')
-        .select('*')
-        .order('name');
+  // ✅ CORREÇÃO - No loadData function
+const loadData = async () => {
+  try {
+    // Carregar parceiros
+    const { data: partnersData, error: partnersError } = await supabase
+      .from('partners')
+      .select('*')
+      .order('name');
 
-      if (partnersError) throw partnersError;
-      setPartners(partnersData || []);
+    if (partnersError) throw partnersError;
+    setPartners(partnersData || []);
 
-      // Se for perfil parceiro, definir o parceiro atual (simulação - em produção seria baseado no usuário)
-      if (user?.profile === 'parceiro' && partnersData && partnersData.length > 0) {
-        setCurrentPartner(partnersData[0]); // Pegar o primeiro parceiro como exemplo
-        setFormData(prev => ({ ...prev, partner_id: partnersData[0].id }));
+    // 🔥 CORREÇÃO: Buscar o partner_id CORRETO do usuário logado
+    if (user?.profile === 'parceiro') {
+      // Buscar o partner_id do usuário logado na tabela users
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('partner_id, partners(name)')
+        .eq('id', user.id)
+        .single();
+
+      if (userError) {
+        console.error('❌ Erro ao buscar partner_id do usuário:', userError);
+      } else if (userData && userData.partner_id) {
+        console.log('🔍 Partner_id do usuário logado:', {
+          partner_id: userData.partner_id,
+          partner_name: userData.partners?.name
+        });
+        
+        setCurrentPartner({
+          id: userData.partner_id,
+          name: userData.partners?.name || 'Parceiro'
+        });
+        setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
+      } else {
+        console.error('❌ Usuário parceiro sem partner_id definido');
+        alert('Erro: Parceiro não vinculado. Contate o administrador.');
       }
-
-      const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
-        supabase
-          .from('exam_requests')
-          .select(`
-            *,
-            doctors(name),
-            insurances(name),
-            partners(name)
-          `)
-          .order('created_at', { ascending: false }),
-        supabase.from('doctors').select('*').order('name'),
-        supabase.from('insurances').select('*').order('name'),
-      ]);
-
-      if (examsRes.error) throw examsRes.error;
-      if (doctorsRes.error) throw doctorsRes.error;
-      if (insurancesRes.error) throw insurancesRes.error;
-
-      setExamRequests(examsRes.data || []);
-      setDoctors(doctorsRes.data || []);
-      setInsurances(insurancesRes.data || []);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // ... resto do código
+  } catch (error) {
+    console.error('Error loading data:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
