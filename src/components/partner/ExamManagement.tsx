@@ -1,37 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Eye, Edit } from 'lucide-react';
-import { supabase, ExamRequest, Doctor, Insurance, Partner } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 
-export function ExamManagement() {
-  const [examRequests, setExamRequests] = useState<any[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [insurances, setInsurances] = useState<Insurance[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [selectedExam, setSelectedExam] = useState<any>(null);
-  const [showObservations, setShowObservations] = useState(false);
-  const [observations, setObservations] = useState('');
-  const [formData, setFormData] = useState({
-    patient_name: '',
-    birth_date: '',
-    consultation_date: '',
-    doctor_id: '',
-    exam_type: '',
-    payment_type: 'particular' as 'particular' | 'convenio',
-    insurance_id: '',
-    partner_id: '',
-  });
-  const { user } = useAuth();
+        const partner = {
+          id: userData.partner_id,
+          name: userData.partners?.name || 'Parceiro'
+        };
+        
+        console.log('✅ Partner carregado:', partner);
+        setCurrentPartner(partner);
+        setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
+        
+        // 🔥 AGORA carrega os dados com o partner_id definido
+        await loadData(partner.id);
+      } else {
+        console.error('❌ Usuário parceiro sem partner_id');
+        alert('Erro: Parceiro não vinculado. Contate o administrador.');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error loading user partner:', error);
+      setLoading(false);
+    }
+  };
 
-  useEffect(() => {
-    loadData();
-  }, [user]); // Adicione user como dependência
-
-  const loadData = async () => {
+  // 🔥 CORREÇÃO: Receber partner_id como parâmetro
+  const loadData = async (userPartnerId?: string) => {
     try {
+      setLoading(true);
+      
       // Carregar parceiros (apenas admin vê todos)
       if (user?.profile === 'admin') {
         const { data: partnersData, error: partnersError } = await supabase
@@ -43,55 +37,31 @@ export function ExamManagement() {
         setPartners(partnersData || []);
       }
 
-      // 🔥 CORREÇÃO: Buscar o partner_id CORRETO do usuário logado
-      if (user?.profile === 'parceiro') {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('partner_id, partners(name)')
-          .eq('id', user.id)
-          .single();
+      // 🔥 CORREÇÃO: Usar partner_id correto (do parâmetro ou state)
+      const effectivePartnerId = userPartnerId || currentPartner?.id;
 
-        if (userError) {
-          console.error('❌ Erro ao buscar partner_id do usuário:', userError);
-        } else if (userData && userData.partner_id) {
-          console.log('🔍 Partner_id do usuário logado:', {
-            partner_id: userData.partner_id,
-            partner_name: userData.partners?.name
-          });
-          
-          setCurrentPartner({
-            id: userData.partner_id,
-            name: userData.partners?.name || 'Parceiro'
-          });
-          setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
-        } else {
-          console.error('❌ Usuário parceiro sem partner_id definido');
-          alert('Erro: Parceiro não vinculado. Contate o administrador.');
-        }
-      }
+      console.log('🔍 Carregando dados com partner_id:', effectivePartnerId);
 
-      // 🔥 CORREÇÃO: Carregar médicos com filtro por partner_id
+      // Carregar médicos com filtro correto
       let doctorsQuery = supabase
         .from('doctors')
         .select('*')
         .order('name');
 
-      // Parceiros veem apenas seus médicos, admin vê todos
-      if (user?.profile === 'parceiro' && currentPartner?.id) {
-        console.log('🔍 Filtrando médicos do parceiro:', currentPartner.id);
-        doctorsQuery = doctorsQuery.eq('partner_id', currentPartner.id);
+      if (user?.profile === 'parceiro' && effectivePartnerId) {
+        console.log('🎯 Filtrando médicos do partner:', effectivePartnerId);
+        doctorsQuery = doctorsQuery.eq('partner_id', effectivePartnerId);
       }
 
-      // 🔥 CORREÇÃO: Carregar convênios com filtro por partner_id
+      // Carregar convênios com filtro correto
       let insurancesQuery = supabase
         .from('insurances')
         .select('*')
         .order('name');
 
-      // Parceiros veem apenas seus convênios, admin vê todos
-      if (user?.profile === 'parceiro' && currentPartner?.id) {
-        console.log('🔍 Filtrando convênios do parceiro:', currentPartner.id);
-        insurancesQuery = insurancesQuery.eq('partner_id', currentPartner.id);
+      if (user?.profile === 'parceiro' && effectivePartnerId) {
+        console.log('🎯 Filtrando convênios do partner:', effectivePartnerId);
+        insurancesQuery = insurancesQuery.eq('partner_id', effectivePartnerId);
       }
 
       // Carregar exames
@@ -105,9 +75,8 @@ export function ExamManagement() {
         `)
         .order('created_at', { ascending: false });
 
-      // Parceiros veem apenas seus exames
-      if (user?.profile === 'parceiro' && currentPartner?.id) {
-        examsQuery = examsQuery.eq('partner_id', currentPartner.id);
+      if (user?.profile === 'parceiro' && effectivePartnerId) {
+        examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
       }
 
       const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
@@ -124,12 +93,12 @@ export function ExamManagement() {
       setDoctors(doctorsRes.data || []);
       setInsurances(insurancesRes.data || []);
 
-      console.log('📊 Dados carregados:', {
+      console.log('📊 Dados carregados com SUCESSO:', {
         exames: examsRes.data?.length,
         medicos: doctorsRes.data?.length,
         convenios: insurancesRes.data?.length,
         perfil: user?.profile,
-        partner: currentPartner?.name
+        partner: effectivePartnerId
       });
 
     } catch (error) {
@@ -185,6 +154,12 @@ export function ExamManagement() {
     }
   };
 
+  // 🔥 CORREÇÃO: Recarregar dados quando currentPartner mudar
+  useEffect(() => {
+    if (currentPartner && user?.profile === 'parceiro') {
+      loadData(currentPartner.id);
+    }
+  }, [currentPartner]);
 
   const handleStatusUpdate = async (examId: string, newStatus: string) => {
     try {
