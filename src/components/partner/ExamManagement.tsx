@@ -216,7 +216,7 @@ export function ExamManagement() {
         exam_type: '',
         payment_type: 'particular',
         insurance_id: '',
-        partner_id: currentPartner?.id || '',
+     
       });
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
