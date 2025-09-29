@@ -28,67 +28,135 @@ export function ExamManagement() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]); // Adicione user como dependência
 
-  // ✅ CORREÇÃO - No loadData function
-const loadData = async () => {
-  try {
-    // Carregar parceiros
-    const { data: partnersData, error: partnersError } = await supabase
-      .from('partners')
-      .select('*')
-      .order('name');
+  const loadData = async () => {
+    try {
+      // Carregar parceiros (apenas admin vê todos)
+      if (user?.profile === 'admin') {
+        const { data: partnersData, error: partnersError } = await supabase
+          .from('partners')
+          .select('*')
+          .order('name');
 
-    if (partnersError) throw partnersError;
-    setPartners(partnersData || []);
-
-    // 🔥 CORREÇÃO: Buscar o partner_id CORRETO do usuário logado
-    if (user?.profile === 'parceiro') {
-      // Buscar o partner_id do usuário logado na tabela users
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('partner_id, partners(name)')
-        .eq('id', user.id)
-        .single();
-
-      if (userError) {
-        console.error('❌ Erro ao buscar partner_id do usuário:', userError);
-      } else if (userData && userData.partner_id) {
-        console.log('🔍 Partner_id do usuário logado:', {
-          partner_id: userData.partner_id,
-          partner_name: userData.partners?.name
-        });
-        
-        setCurrentPartner({
-          id: userData.partner_id,
-          name: userData.partners?.name || 'Parceiro'
-        });
-        setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
-      } else {
-        console.error('❌ Usuário parceiro sem partner_id definido');
-        alert('Erro: Parceiro não vinculado. Contate o administrador.');
+        if (partnersError) throw partnersError;
+        setPartners(partnersData || []);
       }
-    }
 
-    // ... resto do código
-  } catch (error) {
-    console.error('Error loading data:', error);
-  } finally {
-    setLoading(false);
-  }
-};
+      // 🔥 CORREÇÃO: Buscar o partner_id CORRETO do usuário logado
+      if (user?.profile === 'parceiro') {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('partner_id, partners(name)')
+          .eq('id', user.id)
+          .single();
+
+        if (userError) {
+          console.error('❌ Erro ao buscar partner_id do usuário:', userError);
+        } else if (userData && userData.partner_id) {
+          console.log('🔍 Partner_id do usuário logado:', {
+            partner_id: userData.partner_id,
+            partner_name: userData.partners?.name
+          });
+          
+          setCurrentPartner({
+            id: userData.partner_id,
+            name: userData.partners?.name || 'Parceiro'
+          });
+          setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
+        } else {
+          console.error('❌ Usuário parceiro sem partner_id definido');
+          alert('Erro: Parceiro não vinculado. Contate o administrador.');
+        }
+      }
+
+      // 🔥 CORREÇÃO: Carregar médicos com filtro por partner_id
+      let doctorsQuery = supabase
+        .from('doctors')
+        .select('*')
+        .order('name');
+
+      // Parceiros veem apenas seus médicos, admin vê todos
+      if (user?.profile === 'parceiro' && currentPartner?.id) {
+        console.log('🔍 Filtrando médicos do parceiro:', currentPartner.id);
+        doctorsQuery = doctorsQuery.eq('partner_id', currentPartner.id);
+      }
+
+      // 🔥 CORREÇÃO: Carregar convênios com filtro por partner_id
+      let insurancesQuery = supabase
+        .from('insurances')
+        .select('*')
+        .order('name');
+
+      // Parceiros veem apenas seus convênios, admin vê todos
+      if (user?.profile === 'parceiro' && currentPartner?.id) {
+        console.log('🔍 Filtrando convênios do parceiro:', currentPartner.id);
+        insurancesQuery = insurancesQuery.eq('partner_id', currentPartner.id);
+      }
+
+      // Carregar exames
+      let examsQuery = supabase
+        .from('exam_requests')
+        .select(`
+          *,
+          doctors(name),
+          insurances(name),
+          partners(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      // Parceiros veem apenas seus exames
+      if (user?.profile === 'parceiro' && currentPartner?.id) {
+        examsQuery = examsQuery.eq('partner_id', currentPartner.id);
+      }
+
+      const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
+        examsQuery,
+        doctorsQuery,
+        insurancesQuery
+      ]);
+
+      if (examsRes.error) throw examsRes.error;
+      if (doctorsRes.error) throw doctorsRes.error;
+      if (insurancesRes.error) throw insurancesRes.error;
+
+      setExamRequests(examsRes.data || []);
+      setDoctors(doctorsRes.data || []);
+      setInsurances(insurancesRes.data || []);
+
+      console.log('📊 Dados carregados:', {
+        exames: examsRes.data?.length,
+        medicos: doctorsRes.data?.length,
+        convenios: insurancesRes.data?.length,
+        perfil: user?.profile,
+        partner: currentPartner?.name
+      });
+
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // 🔍 DEBUG: Verificar dados antes de enviar
+      console.log('🏥 Criando encaminhamento de exame:', {
+        ...formData,
+        user_profile: user?.profile,
+        current_partner: currentPartner,
+        medicos_disponiveis: doctors.length,
+        convenios_disponiveis: insurances.length
+      });
+
       const examData = {
         ...formData,
         insurance_id: formData.payment_type === 'convenio' ? formData.insurance_id : null,
       };
-
-      console.log('🏥 Criando encaminhamento de exame:', examData);
 
       const { error } = await supabase
         .from('exam_requests')
@@ -116,6 +184,7 @@ const loadData = async () => {
       setLoading(false);
     }
   };
+
 
   const handleStatusUpdate = async (examId: string, newStatus: string) => {
     try {
@@ -166,11 +235,21 @@ const loadData = async () => {
       </div>
     );
   }
+ if (showForm) {
+    console.log('🔍 Formulário - Médicos disponíveis:', doctors.length);
+    console.log('🔍 Formulário - Convênios disponíveis:', insurances.length);
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-900">Encaminhamento de Exames</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Encaminhamento de Exames</h2>
+          <p className="text-sm text-gray-600">
+            {examRequests.length} exame{examRequests.length !== 1 ? 's' : ''} encaminhado{examRequests.length !== 1 ? 's' : ''}
+            {currentPartner && ` por ${currentPartner.name}`}
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -183,6 +262,30 @@ const loadData = async () => {
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Encaminhar Novo Exame</h3>
+          
+          {/* 🔥 Adicione este alerta informativo */}
+          {doctors.length === 0 && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Nenhum médico cadastrado. 
+                {user?.profile === 'parceiro' 
+                  ? ' Cadastre médicos antes de encaminhar exames.' 
+                  : ' Contate o administrador.'}
+              </p>
+            </div>
+          )}
+
+          {formData.payment_type === 'convenio' && insurances.length === 0 && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Nenhum convênio cadastrado. 
+                {user?.profile === 'parceiro' 
+                  ? ' Cadastre convênios ou use "Particular".' 
+                  : ' Contate o administrador.'}
+              </p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
@@ -221,14 +324,20 @@ const loadData = async () => {
                 value={formData.doctor_id}
                 onChange={(e) => setFormData({ ...formData, doctor_id: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={doctors.length === 0}
               >
-                <option value="">Selecione um médico</option>
+                <option value="">{doctors.length === 0 ? 'Nenhum médico cadastrado' : 'Selecione um médico'}</option>
                 {doctors.map((doctor) => (
                   <option key={doctor.id} value={doctor.id}>
                     {doctor.name} - {doctor.crm}
                   </option>
                 ))}
               </select>
+              {doctors.length === 0 && user?.profile === 'parceiro' && (
+                <p className="text-xs text-red-600 mt-1">
+                  Cadastre médicos em "Gestão de Médicos" primeiro
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Exame</label>
@@ -267,7 +376,9 @@ const loadData = async () => {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="particular">Particular</option>
-                <option value="convenio">Convênio</option>
+                <option value="convenio" disabled={insurances.length === 0}>
+                  Convênio {insurances.length === 0 && '(indisponível)'}
+                </option>
               </select>
             </div>
             {formData.payment_type === 'convenio' && (
@@ -278,20 +389,26 @@ const loadData = async () => {
                   value={formData.insurance_id}
                   onChange={(e) => setFormData({ ...formData, insurance_id: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={insurances.length === 0}
                 >
-                  <option value="">Selecione um convênio</option>
+                  <option value="">{insurances.length === 0 ? 'Nenhum convênio cadastrado' : 'Selecione um convênio'}</option>
                   {insurances.map((insurance) => (
                     <option key={insurance.id} value={insurance.id}>
                       {insurance.name}
                     </option>
                   ))}
                 </select>
+                {insurances.length === 0 && user?.profile === 'parceiro' && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Cadastre convênios em "Gestão de Convênios" primeiro
+                  </p>
+                )}
               </div>
             )}
             <div className="md:col-span-3 flex space-x-3">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || doctors.length === 0}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Encaminhando...' : 'Encaminhar Exame'}
