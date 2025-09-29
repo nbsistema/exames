@@ -55,85 +55,89 @@ export function UserManagement() {
     }
   };
 
-  const loadUsers = async () => {
-    if (!supabase) {
-      console.warn('⚠️ Supabase não configurado');
-      setLoading(false);
+ const loadUsers = async () => {
+  if (!supabase) {
+    console.warn('⚠️ Supabase não configurado');
+    setLoading(false);
+    return;
+  }
+
+  setLoading(true);
+  try {
+    console.log('📋 Carregando usuários (auth.users + public.users)…');
+
+    // 1) Lista auth.users
+    if (!supabaseAdmin) {
+      console.error('❌ Service Role Key não configurada');
+      setUsers([]);
+      return;
+    }
+    const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+    if (authError) {
+      console.error('❌ Erro ao carregar auth.users:', authError);
+      setUsers([]);
       return;
     }
 
-    setLoading(true);
-    try {
-      console.log('📋 Carregando usuários (auth.users + public.users)…');
+    // 2) Busca perfis no DB com informações do parceiro (CORRIGIDO)
+    const { data: profiles, error: profileError } = await supabase
+      .from('users')
+      .select(`
+        id, 
+        email, 
+        name, 
+        profile, 
+        partner_id,
+        partners (id, name),
+        created_at, 
+        updated_at
+      `)
+      .order('created_at', { ascending: false });
 
-      // 1) Lista auth.users
-      if (!supabaseAdmin) {
-        console.error('❌ Service Role Key não configurada');
-        setUsers([]);
-        return;
-      }
-      const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
-      if (authError) {
-        console.error('❌ Erro ao carregar auth.users:', authError);
-        setUsers([]);
-        return;
-      }
-
-      // 2) Busca perfis no DB com informações do parceiro
-      const { data: profiles, error: profileError } = await supabase
-        .from('users')
-        .select(`
-          id, 
-          email, 
-          name, 
-          profile, 
-          partner_id,
-          partners!inner (id, name),
-          created_at, 
-          updated_at
-        `)
-        .order('created_at', { ascending: false });
-
-      if (profileError) {
-        console.error('❌ Erro ao carregar perfis do DB:', profileError);
-        setUsers([]);
-        return;
-      }
-
-      // 3) Combina os dados
-      const combinedUsers: AppUser[] = authUsers.users.map((au) => {
-        const db = profiles?.find((p) => p.id === au.id);
-        const authProfile = (au.user_metadata?.profile ?? null) as UserProfile | null;
-
-        const effectiveProfile = (db?.profile as UserProfile) ?? ('checkup' as UserProfile);
-        const mismatch =
-          authProfile != null &&
-          db?.profile != null &&
-          String(authProfile) !== String(db.profile);
-
-        return {
-          id: au.id,
-          email: db?.email || au.email || '',
-          name: db?.name || au.user_metadata?.name || au.email?.split('@')[0] || 'Usuário',
-          profile: effectiveProfile,
-          partner_id: db?.partner_id || undefined,
-          partner_name: db?.partners?.name || undefined,
-          created_at: db?.created_at || au.created_at,
-          updated_at: db?.updated_at || au.updated_at || au.created_at,
-          _authProfile: authProfile,
-          _profileMismatch: !!mismatch,
-        };
-      });
-
-      console.log('✅ Usuários carregados:', combinedUsers.length);
-      setUsers(combinedUsers);
-    } catch (error) {
-      console.error('❌ Erro interno ao carregar usuários:', error);
+    if (profileError) {
+      console.error('❌ Erro ao carregar perfis do DB:', profileError);
       setUsers([]);
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+
+    // 3) Combina os dados
+    const combinedUsers: AppUser[] = authUsers.users.map((au) => {
+      const db = profiles?.find((p) => p.id === au.id);
+      const authProfile = (au.user_metadata?.profile ?? null) as UserProfile | null;
+
+      const effectiveProfile = (db?.profile as UserProfile) || ('checkup' as UserProfile);
+      const mismatch =
+        authProfile != null &&
+        db?.profile != null &&
+        String(authProfile) !== String(db.profile);
+
+      console.log(
+        `[perfil] ${au.email} -> DB=${db?.profile ?? '—'} | AUTH=${authProfile ?? '—'} | mismatch=${mismatch}`
+      );
+
+      return {
+        id: au.id,
+        email: db?.email || au.email || '',
+        name: db?.name || au.user_metadata?.name || au.email?.split('@')[0] || 'Usuário',
+        profile: effectiveProfile,
+        partner_id: db?.partner_id || undefined,
+        partner_name: db?.partners?.name || undefined,
+        created_at: db?.created_at || au.created_at,
+        updated_at: db?.updated_at || au.updated_at || au.created_at,
+        _authProfile: authProfile,
+        _profileMismatch: !!mismatch,
+      };
+    });
+
+    console.log('✅ Usuários carregados:', combinedUsers.length);
+    setUsers(combinedUsers);
+  } catch (error) {
+    console.error('❌ Erro interno ao carregar usuários:', error);
+    setUsers([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
