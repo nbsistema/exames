@@ -12,8 +12,11 @@ export function ExamManagement() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedExam, setSelectedExam] = useState<any>(null);
-  const [showObservations, setShowObservations] = useState(false);
-  const [observations, setObservations] = useState('');
+  const [showConduct, setShowConduct] = useState(false);
+  const [conductData, setConductData] = useState({
+    conduct: '' as 'cirurgica' | 'ambulatorial' | '',
+    conduct_observations: ''
+  });
   const [formData, setFormData] = useState({
     patient_name: '',
     birth_date: '',
@@ -26,8 +29,8 @@ export function ExamManagement() {
   });
   const { user } = useAuth();
 
-  // 🔥 CORREÇÃO: Carregar partner_id primeiro
   useEffect(() => {
+    console.log('🔄 useEffect inicial - user:', user);
     if (user?.profile === 'parceiro') {
       loadUserPartner();
     } else {
@@ -35,10 +38,9 @@ export function ExamManagement() {
     }
   }, [user]);
 
-  // 🔥 NOVA FUNÇÃO: Carregar partner_id do usuário
   const loadUserPartner = async () => {
     try {
-      console.log('🔍 Buscando partner_id do usuário...');
+      console.log('🔍 Buscando partner_id do usuário...', user?.id);
       
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -51,6 +53,8 @@ export function ExamManagement() {
         return;
       }
 
+      console.log('📋 Dados do usuário:', userData);
+
       if (userData && userData.partner_id) {
         const partner = {
           id: userData.partner_id,
@@ -61,7 +65,6 @@ export function ExamManagement() {
         setCurrentPartner(partner);
         setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
         
-        // 🔥 AGORA carrega os dados com o partner_id definido
         await loadData(partner.id);
       } else {
         console.error('❌ Usuário parceiro sem partner_id');
@@ -74,10 +77,10 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 CORREÇÃO: useCallback para loadData
   const loadData = useCallback(async (userPartnerId?: string) => {
     try {
       setLoading(true);
+      console.log('🚀 Iniciando loadData com partnerId:', userPartnerId);
       
       // Carregar parceiros (apenas admin vê todos)
       if (user?.profile === 'admin') {
@@ -90,10 +93,10 @@ export function ExamManagement() {
         setPartners(partnersData || []);
       }
 
-      // 🔥 CORREÇÃO: Usar partner_id correto (do parâmetro ou state)
       const effectivePartnerId = userPartnerId || currentPartner?.id;
 
       console.log('🔍 Carregando dados com partner_id:', effectivePartnerId);
+      console.log('👤 Perfil do usuário:', user?.profile);
 
       // Carregar médicos com filtro correto
       let doctorsQuery = supabase
@@ -113,9 +116,19 @@ export function ExamManagement() {
         .order('name');
 
       if (user?.profile === 'parceiro' && effectivePartnerId) {
-        console.log('🎯 Filtrando convênios do partner:', effectivePartnerId);
-        insurancesQuery = insurancesQuery.eq('partner_id', effectivePartnerId);
+        console.log('🎯 Filtrando convênios para partner:', effectivePartnerId);
+        insurancesQuery = insurancesQuery.or(`partner_id.eq.${effectivePartnerId},partner_id.is.null`);
       }
+
+      console.log('🔍 Executando query de convênios...');
+      const insurancesRes = await insurancesQuery;
+      
+      if (insurancesRes.error) {
+        console.error('❌ Erro ao buscar convênios filtrados:', insurancesRes.error);
+        throw insurancesRes.error;
+      }
+
+      console.log('✅ Convênios carregados com sucesso:', insurancesRes.data);
 
       // Carregar exames
       let examsQuery = supabase
@@ -132,15 +145,13 @@ export function ExamManagement() {
         examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
       }
 
-      const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
+      const [examsRes, doctorsRes] = await Promise.all([
         examsQuery,
-        doctorsQuery,
-        insurancesQuery
+        doctorsQuery
       ]);
 
       if (examsRes.error) throw examsRes.error;
       if (doctorsRes.error) throw doctorsRes.error;
-      if (insurancesRes.error) throw insurancesRes.error;
 
       setExamRequests(examsRes.data || []);
       setDoctors(doctorsRes.data || []);
@@ -151,11 +162,16 @@ export function ExamManagement() {
         medicos: doctorsRes.data?.length,
         convenios: insurancesRes.data?.length,
         perfil: user?.profile,
-        partner: effectivePartnerId
+        partner: effectivePartnerId,
+        lista_convenios: insurancesRes.data?.map(i => ({ 
+          id: i.id, 
+          name: i.name, 
+          partner_id: i.partner_id 
+        }))
       });
 
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('❌ Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -166,7 +182,6 @@ export function ExamManagement() {
     setLoading(true);
 
     try {
-      // 🔍 DEBUG: Verificar dados antes de enviar
       console.log('🏥 Criando encaminhamento de exame:', {
         ...formData,
         user_profile: user?.profile,
@@ -186,7 +201,6 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      // 🔥 CORREÇÃO: Passar o partner_id correto
       if (user?.profile === 'parceiro' && currentPartner) {
         await loadData(currentPartner.id);
       } else {
@@ -213,19 +227,19 @@ export function ExamManagement() {
     }
   };
 
-  const handleStatusUpdate = async (examId: string, newStatus: string) => {
+  // 🔥 ATUALIZADO: Função para atualizar conduta
+  const handleConductUpdate = async (examId: string) => {
     try {
       const { error } = await supabase
         .from('exam_requests')
         .update({ 
-          status: newStatus,
-          observations: newStatus === 'intervencao' ? observations : ''
+          conduct: conductData.conduct,
+          conduct_observations: conductData.conduct_observations
         })
         .eq('id', examId);
 
       if (error) throw error;
 
-      // 🔥 CORREÇÃO: Passar o partner_id correto
       if (user?.profile === 'parceiro' && currentPartner) {
         await loadData(currentPartner.id);
       } else {
@@ -233,8 +247,36 @@ export function ExamManagement() {
       }
 
       setSelectedExam(null);
-      setShowObservations(false);
-      setObservations('');
+      setShowConduct(false);
+      setConductData({
+        conduct: '',
+        conduct_observations: ''
+      });
+      alert('Conduta registrada com sucesso!');
+    } catch (error) {
+      console.error('Error updating conduct:', error);
+      alert('Erro ao registrar conduta');
+    }
+  };
+
+  // 🔥 ATUALIZADO: Função para atualizar status (apenas encaminhado/executado)
+  const handleStatusUpdate = async (examId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('exam_requests')
+        .update({ 
+          status: newStatus
+        })
+        .eq('id', examId);
+
+      if (error) throw error;
+
+      if (user?.profile === 'parceiro' && currentPartner) {
+        await loadData(currentPartner.id);
+      } else {
+        await loadData();
+      }
+
       alert('Status atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating status:', error);
@@ -242,30 +284,47 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 CORREÇÃO: useEffect com dependências corretas
   useEffect(() => {
     if (currentPartner && user?.profile === 'parceiro') {
+      console.log('🔄 currentPartner mudou, recarregando dados...', currentPartner);
       loadData(currentPartner.id);
     }
   }, [currentPartner, user, loadData]);
 
+  // 🔥 ATUALIZADO: Cores dos status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'encaminhado':
         return 'bg-blue-100 text-blue-800';
       case 'executado':
         return 'bg-green-100 text-green-800';
-      case 'intervencao':
-        return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
+  // 🔥 ATUALIZADO: Labels dos status
   const statusLabels = {
     encaminhado: 'Encaminhado ao CTR',
-    executado: 'Executado',
-    intervencao: 'Intervenção'
+    executado: 'Executado'
+  };
+
+  // 🔥 NOVO: Cores para conduta
+  const getConductColor = (conduct: string) => {
+    switch (conduct) {
+      case 'cirurgica':
+        return 'bg-red-100 text-red-800';
+      case 'ambulatorial':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // 🔥 NOVO: Labels para conduta
+  const conductLabels = {
+    cirurgica: 'Cirúrgica',
+    ambulatorial: 'Ambulatorial'
   };
 
   if (loading && examRequests.length === 0) {
@@ -277,8 +336,13 @@ export function ExamManagement() {
   }
 
   if (showForm) {
-    console.log('🔍 Formulário - Médicos disponíveis:', doctors.length);
-    console.log('🔍 Formulário - Convênios disponíveis:', insurances.length);
+    console.log('🔍 Formulário ABERTO - Debug:', {
+      medicos_disponiveis: doctors.length,
+      convenios_disponiveis: insurances.length,
+      lista_convenios: insurances,
+      perfil_usuario: user?.profile,
+      current_partner: currentPartner
+    });
   }
 
   return (
@@ -304,7 +368,6 @@ export function ExamManagement() {
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Encaminhar Novo Exame</h3>
           
-          {/* 🔥 Adicione este alerta informativo */}
           {doctors.length === 0 && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
@@ -316,18 +379,28 @@ export function ExamManagement() {
             </div>
           )}
 
+          {/* Debug info */}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              🔍 Debug: {insurances.length} convênio(s) disponível(s) | 
+              Perfil: {user?.profile} | 
+              Partner: {currentPartner?.name || 'Nenhum'}
+            </p>
+          </div>
+
           {formData.payment_type === 'convenio' && insurances.length === 0 && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
-                ⚠️ Nenhum convênio cadastrado. 
+                ⚠️ Nenhum convênio disponível. 
                 {user?.profile === 'parceiro' 
-                  ? ' Cadastre convênios ou use "Particular".' 
-                  : ' Contate o administrador.'}
+                  ? ' Cadastre convênios no sistema ou use "Particular".' 
+                  : ' Contate o administrador para cadastrar convênios.'}
               </p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Campos do formulário permanecem iguais */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
               <input
@@ -418,13 +491,20 @@ export function ExamManagement() {
               >
                 <option value="particular">Particular</option>
                 <option value="convenio" disabled={insurances.length === 0}>
-                  Convênio {insurances.length === 0 && '(indisponível)'}
+                  {insurances.length === 0 ? 'Convênio (indisponível)' : 'Convênio'}
                 </option>
               </select>
+              {insurances.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Nenhum convênio cadastrado no sistema
+                </p>
+              )}
             </div>
             {formData.payment_type === 'convenio' && (
               <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Convênio</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Convênio {insurances.length > 0 && `(${insurances.length} disponível)`}
+                </label>
                 <select
                   required
                   value={formData.insurance_id}
@@ -435,7 +515,7 @@ export function ExamManagement() {
                   <option value="">{insurances.length === 0 ? 'Nenhum convênio cadastrado' : 'Selecione um convênio'}</option>
                   {insurances.map((insurance) => (
                     <option key={insurance.id} value={insurance.id}>
-                      {insurance.name}
+                      {insurance.name} {insurance.partner_id ? `(Partner: ${insurance.partner_id})` : '(Global)'}
                     </option>
                   ))}
                 </select>
@@ -466,32 +546,49 @@ export function ExamManagement() {
         </div>
       )}
 
-      {showObservations && selectedExam && (
+      {/* 🔥 ATUALIZADO: Modal para Conduta */}
+      {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Adicionar Observações - Intervenção</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Conduta</label>
+              <select
+                required
+                value={conductData.conduct}
+                onChange={(e) => setConductData({ ...conductData, conduct: e.target.value as 'cirurgica' | 'ambulatorial' })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Selecione a conduta</option>
+                <option value="cirurgica">Cirúrgica</option>
+                <option value="ambulatorial">Ambulatorial</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Observações da Conduta</label>
               <textarea
                 rows={4}
-                value={observations}
-                onChange={(e) => setObservations(e.target.value)}
+                value={conductData.conduct_observations}
+                onChange={(e) => setConductData({ ...conductData, conduct_observations: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Descreva as observações da intervenção..."
+                placeholder="Descreva as observações da conduta..."
               />
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => handleStatusUpdate(selectedExam.id, 'intervencao')}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                onClick={() => handleConductUpdate(selectedExam.id)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Confirmar Intervenção
+                Confirmar Conduta
               </button>
               <button
                 onClick={() => {
-                  setShowObservations(false);
+                  setShowConduct(false);
                   setSelectedExam(null);
-                  setObservations('');
+                  setConductData({
+                    conduct: '',
+                    conduct_observations: ''
+                  });
                 }}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
@@ -524,6 +621,9 @@ export function ExamManagement() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Conduta
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Tipo
@@ -561,6 +661,15 @@ export function ExamManagement() {
                       {statusLabels[exam.status as keyof typeof statusLabels]}
                     </span>
                   </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    {exam.conduct ? (
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)}`}>
+                        {conductLabels[exam.conduct as keyof typeof conductLabels]}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Não definida</span>
+                    )}
+                  </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`}
                   </td>
@@ -580,14 +689,15 @@ export function ExamManagement() {
                           <Eye className="w-4 h-4" />
                         </button>
                       )}
+                      {/* 🔥 ATUALIZADO: Botão para conduta (apenas para exames executados) */}
                       {exam.status === 'executado' && (
                         <button
                           onClick={() => {
                             setSelectedExam(exam);
-                            setShowObservations(true);
+                            setShowConduct(true);
                           }}
-                          className="text-orange-600 hover:text-orange-800 transition-colors"
-                          title="Marcar como Intervenção"
+                          className="text-blue-600 hover:text-blue-800 transition-colors"
+                          title="Registrar Conduta"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
