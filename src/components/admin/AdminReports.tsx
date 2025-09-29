@@ -26,6 +26,8 @@ interface ReportData {
   unit_name?: string;
   exams_to_perform?: string[];
   type: 'exam' | 'checkup';
+  conduct?: string;
+  conduct_observations?: string;
 }
 
 export function AdminReports() {
@@ -39,6 +41,7 @@ export function AdminReports() {
     paymentType: '',
     partner: '',
     reportType: 'all' as 'all' | 'exams' | 'checkups',
+    conduct: '',
   });
   const [partners, setPartners] = useState([]);
   const [stats, setStats] = useState({
@@ -46,7 +49,8 @@ export function AdminReports() {
     totalCheckups: 0,
     completedExams: 0,
     pendingExams: 0,
-    interventions: 0,
+    surgicalConducts: 0,
+    outpatientConducts: 0,
   });
 
   useEffect(() => {
@@ -104,6 +108,9 @@ export function AdminReports() {
         if (filters.partner) {
           examQuery = examQuery.eq('partner_id', filters.partner);
         }
+        if (filters.conduct) {
+          examQuery = examQuery.eq('conduct', filters.conduct);
+        }
 
         const { data: exams, error: examError } = await examQuery;
         if (examError) throw examError;
@@ -120,6 +127,8 @@ export function AdminReports() {
           doctor_name: item.doctors?.name || 'N/A',
           insurance_name: item.insurances?.name,
           observations: item.observations || '',
+          conduct: item.conduct,
+          conduct_observations: item.conduct_observations,
           created_at: item.created_at,
           type: 'exam' as const,
         }));
@@ -173,14 +182,16 @@ export function AdminReports() {
       const totalCheckups = checkupData.length;
       const completedExams = examData.filter(e => e.status === 'executado').length;
       const pendingExams = examData.filter(e => e.status === 'encaminhado').length;
-      const interventions = examData.filter(e => e.status === 'intervencao').length;
+      const surgicalConducts = examData.filter(e => e.conduct === 'cirurgica').length;
+      const outpatientConducts = examData.filter(e => e.conduct === 'ambulatorial').length;
 
       setStats({
         totalExams,
         totalCheckups,
         completedExams,
         pendingExams,
-        interventions,
+        surgicalConducts,
+        outpatientConducts,
       });
 
     } catch (error) {
@@ -208,7 +219,8 @@ export function AdminReports() {
       doc.text(`Total de Check-ups: ${stats.totalCheckups}`, 14, 42);
       doc.text(`Exames Concluídos: ${stats.completedExams}`, 14, 49);
       doc.text(`Exames Pendentes: ${stats.pendingExams}`, 14, 56);
-      doc.text(`Intervenções: ${stats.interventions}`, 14, 63);
+      doc.text(`Condutas Cirúrgicas: ${stats.surgicalConducts}`, 14, 63);
+      doc.text(`Condutas Ambulatoriais: ${stats.outpatientConducts}`, 14, 70);
 
       // Preparar dados para a tabela
       const tableData = reportData.map(item => [
@@ -218,14 +230,15 @@ export function AdminReports() {
         item.type === 'exam' ? item.doctor_name : item.requesting_company,
         getStatusLabel(item.status),
         item.type === 'exam' ? (item.payment_type === 'particular' ? 'Particular' : 'Convênio') : 'Check-up',
+        item.conduct ? getConductLabel(item.conduct) : '',
         format(new Date(item.created_at), 'dd/MM/yyyy'),
       ]);
 
       // Adicionar tabela
       autoTable(doc, {
-        head: [['Paciente', 'Nascimento', 'Exame/Bateria', 'Médico/Empresa', 'Status', 'Tipo', 'Data']],
+        head: [['Paciente', 'Nascimento', 'Exame/Bateria', 'Médico/Empresa', 'Status', 'Tipo', 'Conduta', 'Data']],
         body: tableData,
-        startY: 75,
+        startY: 85,
         styles: { fontSize: 8 },
         headStyles: { fillColor: [59, 130, 246] },
       });
@@ -251,6 +264,8 @@ export function AdminReports() {
         'Exame/Bateria': item.type === 'exam' ? item.exam_type : item.battery_name,
         'Médico/Empresa': item.type === 'exam' ? item.doctor_name : item.requesting_company,
         'Status': getStatusLabel(item.status),
+        'Conduta': item.conduct ? getConductLabel(item.conduct) : '',
+        'Observações da Conduta': item.conduct_observations || '',
         'Tipo de Pagamento': item.type === 'exam' ? (item.payment_type === 'particular' ? 'Particular' : 'Convênio') : 'Check-up',
         'Convênio': item.insurance_name || '',
         'Parceiro': item.partner_name,
@@ -271,6 +286,8 @@ export function AdminReports() {
         { wch: 30 }, // Exame/Bateria
         { wch: 25 }, // Médico/Empresa
         { wch: 15 }, // Status
+        { wch: 15 }, // Conduta
+        { wch: 25 }, // Observações da Conduta
         { wch: 15 }, // Tipo de Pagamento
         { wch: 20 }, // Convênio
         { wch: 20 }, // Parceiro
@@ -289,7 +306,8 @@ export function AdminReports() {
         { 'Métrica': 'Total de Check-ups', 'Valor': stats.totalCheckups },
         { 'Métrica': 'Exames Concluídos', 'Valor': stats.completedExams },
         { 'Métrica': 'Exames Pendentes', 'Valor': stats.pendingExams },
-        { 'Métrica': 'Intervenções', 'Valor': stats.interventions },
+        { 'Métrica': 'Condutas Cirúrgicas', 'Valor': stats.surgicalConducts },
+        { 'Métrica': 'Condutas Ambulatoriais', 'Valor': stats.outpatientConducts },
       ];
       const statsWs = XLSX.utils.json_to_sheet(statsData);
       XLSX.utils.book_append_sheet(wb, statsWs, 'Estatísticas');
@@ -310,10 +328,17 @@ export function AdminReports() {
     const labels = {
       encaminhado: 'Encaminhado ao CTR',
       executado: 'Executado',
-      intervencao: 'Intervenção',
       solicitado: 'Solicitado',
     };
     return labels[status as keyof typeof labels] || status;
+  };
+
+  const getConductLabel = (conduct: string) => {
+    const labels = {
+      cirurgica: 'Cirúrgica',
+      ambulatorial: 'Ambulatorial',
+    };
+    return labels[conduct as keyof typeof labels] || conduct;
   };
 
   const getStatusColor = (status: string) => {
@@ -323,8 +348,17 @@ export function AdminReports() {
         return 'bg-blue-100 text-blue-800';
       case 'executado':
         return 'bg-green-100 text-green-800';
-      case 'intervencao':
-        return 'bg-orange-100 text-orange-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getConductColor = (conduct: string) => {
+    switch (conduct) {
+      case 'cirurgica':
+        return 'bg-red-100 text-red-800';
+      case 'ambulatorial':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -355,7 +389,7 @@ export function AdminReports() {
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-blue-600">{stats.totalExams}</div>
           <div className="text-sm text-gray-600">Total de Exames</div>
@@ -373,8 +407,12 @@ export function AdminReports() {
           <div className="text-sm text-gray-600">Exames Pendentes</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-red-600">{stats.interventions}</div>
-          <div className="text-sm text-gray-600">Intervenções</div>
+          <div className="text-2xl font-bold text-red-600">{stats.surgicalConducts}</div>
+          <div className="text-sm text-gray-600">Condutas Cirúrgicas</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-indigo-600">{stats.outpatientConducts}</div>
+          <div className="text-sm text-gray-600">Condutas Ambulatoriais</div>
         </div>
       </div>
 
@@ -384,7 +422,7 @@ export function AdminReports() {
           <Filter className="w-5 h-5 mr-2" />
           Filtros
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Relatório</label>
             <select
@@ -425,7 +463,6 @@ export function AdminReports() {
               <option value="">Todos</option>
               <option value="encaminhado">Encaminhado</option>
               <option value="executado">Executado</option>
-              <option value="intervencao">Intervenção</option>
               <option value="solicitado">Solicitado</option>
             </select>
           </div>
@@ -452,6 +489,18 @@ export function AdminReports() {
               {partners.map((partner: any) => (
                 <option key={partner.id} value={partner.id}>{partner.name}</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Conduta</label>
+            <select
+              value={filters.conduct}
+              onChange={(e) => setFilters({ ...filters, conduct: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Todas</option>
+              <option value="cirurgica">Cirúrgica</option>
+              <option value="ambulatorial">Ambulatorial</option>
             </select>
           </div>
         </div>
@@ -491,6 +540,9 @@ export function AdminReports() {
                     Status
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Conduta
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pagamento
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -524,6 +576,15 @@ export function AdminReports() {
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(item.status)}`}>
                         {getStatusLabel(item.status)}
                       </span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {item.conduct ? (
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(item.conduct)}`}>
+                          {getConductLabel(item.conduct)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {item.type === 'exam' ? (
