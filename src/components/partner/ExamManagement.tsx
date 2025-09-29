@@ -216,7 +216,7 @@ export function ExamManagement() {
         exam_type: '',
         payment_type: 'particular',
         insurance_id: '',
-     
+        partner_id: currentPartner?.id || '',
       });
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
@@ -513,11 +513,11 @@ export function ExamManagement() {
                   disabled={insurances.length === 0}
                 >
                   <option value="">{insurances.length === 0 ? 'Nenhum convênio cadastrado' : 'Selecione um convênio'}</option>
-                  {insurances.map((insurance) => (
-                    <option key={insurance.id} value={insurance.id}>
-                      {insurance.name} {insurance.partner_id ? `(Partner: ${insurance.partner_id})` : '(Global)'}
-                    </option>
-                  ))}
+               {insurances.map((insurance) => (
+                <option key={insurance.id} value={insurance.id}>
+              {insurance.name}
+              </option>
+              ))}
                 </select>
                 {insurances.length === 0 && user?.profile === 'parceiro' && (
                   <p className="text-xs text-red-600 mt-1">
