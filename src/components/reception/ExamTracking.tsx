@@ -12,6 +12,7 @@ export function ExamTracking() {
   const [filters, setFilters] = useState({
     status: '',
     paymentType: '',
+    patientName: '',
   });
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
@@ -46,6 +47,10 @@ export function ExamTracking() {
 
       if (filters.paymentType) {
         query = query.eq('payment_type', filters.paymentType);
+      }
+
+      if (filters.patientName) {
+        query = query.ilike('patient_name', `%${filters.patientName}%`);
       }
 
       const { data, error } = await query;
@@ -143,7 +148,17 @@ export function ExamTracking() {
           <Filter className="w-4 h-4 mr-2" />
           Filtros
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
+            <input
+              type="text"
+              value={filters.patientName}
+              onChange={(e) => setFilters({ ...filters, patientName: e.target.value })}
+              placeholder="Buscar por nome..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
