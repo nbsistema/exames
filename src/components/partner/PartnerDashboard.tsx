@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Users, CreditCard, FileText, Activity } from 'lucide-react';
+import { Users, CreditCard, FileText, Activity, BarChart3 } from 'lucide-react';
 import { DoctorManagement } from './DoctorManagement';
 import { InsuranceManagement } from './InsuranceManagement';
 import { ExamManagement } from './ExamManagement';
 import { PartnerOverview } from './PartnerOverview';
+import { ExamReports } from './PartnerReports';
 
-type PartnerTab = 'overview' | 'doctors' | 'insurances' | 'exams';
+type PartnerTab = 'overview' | 'doctors' | 'insurances' | 'exams' | 'reports';
 
 export function PartnerDashboard() {
   const [activeTab, setActiveTab] = useState<PartnerTab>('overview');
@@ -15,6 +16,7 @@ export function PartnerDashboard() {
     { id: 'doctors', label: 'Médicos', icon: Users },
     { id: 'insurances', label: 'Convênios', icon: CreditCard },
     { id: 'exams', label: 'Encaminhamentos', icon: FileText },
+    { id: 'reports', label: 'Relatórios', icon: BarChart3 },
   ];
 
   const renderTabContent = () => {
@@ -27,6 +29,8 @@ export function PartnerDashboard() {
         return <InsuranceManagement />;
       case 'exams':
         return <ExamManagement />;
+      case 'reports':
+        return <PartnerReports />;
       default:
         return <PartnerOverview />;
     }
@@ -36,7 +40,7 @@ export function PartnerDashboard() {
     <div className="p-6">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Painel do Parceiro</h1>
-        <p className="text-gray-600">Gerencie médicos, convênios e encaminhamentos</p>
+        <p className="text-gray-600">Gerencie médicos, convênios, encaminhamentos e relatórios</p>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm">
