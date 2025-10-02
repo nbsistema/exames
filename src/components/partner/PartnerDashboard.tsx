@@ -4,7 +4,7 @@ import { DoctorManagement } from './DoctorManagement';
 import { InsuranceManagement } from './InsuranceManagement';
 import { ExamManagement } from './ExamManagement';
 import { PartnerOverview } from './PartnerOverview';
-import { ExamReports } from './PartnerReports';
+import { ExamReports } from './ExamReports';
 
 type PartnerTab = 'overview' | 'doctors' | 'insurances' | 'exams' | 'reports';
 
@@ -30,7 +30,7 @@ export function PartnerDashboard() {
       case 'exams':
         return <ExamManagement />;
       case 'reports':
-        return <PartnerReports />;
+        return <ExamReports />;
       default:
         return <PartnerOverview />;
     }
