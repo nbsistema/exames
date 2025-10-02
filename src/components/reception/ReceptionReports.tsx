@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter } from 'lucide-react';
+import { Calendar, Download, Filter, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function ReceptionReports() {
   const [reportData, setReportData] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForwardForm, setShowForwardForm] = useState(false);
+  const [selectedCheckup, setSelectedCheckup] = useState<any>(null);
+  const [selectedUnit, setSelectedUnit] = useState('');
+  const [observations, setObservations] = useState('');
+
   const [filters, setFilters] = useState({
     startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
@@ -15,7 +21,22 @@ export function ReceptionReports() {
 
   useEffect(() => {
     loadReportData();
+    loadUnits();
   }, [filters]);
+
+  const loadUnits = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('units')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      setUnits(data || []);
+    } catch (error) {
+      console.error('Error loading units:', error);
+    }
+  };
 
   const loadReportData = async () => {
     setLoading(true);
@@ -63,6 +84,38 @@ export function ReceptionReports() {
       console.error('Error loading report data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForwardToUnit = async () => {
+    if (!selectedCheckup || !selectedUnit) return;
+
+    try {
+      const { error } = await supabase
+        .from('checkup_requests')
+        .update({
+          unit_id: selectedUnit,
+          status: 'encaminhado',
+          observations: observations,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedCheckup.id);
+
+      if (error) throw error;
+
+      // Recarregar os dados
+      await loadReportData();
+      
+      // Fechar o formulário
+      setShowForwardForm(false);
+      setSelectedCheckup(null);
+      setSelectedUnit('');
+      setObservations('');
+      
+      alert('Check-up encaminhado com sucesso!');
+    } catch (error) {
+      console.error('Error forwarding checkup:', error);
+      alert('Erro ao encaminhar check-up');
     }
   };
 
@@ -144,7 +197,6 @@ export function ReceptionReports() {
                   <option value="">Todos</option>
                   <option value="encaminhado">Encaminhado</option>
                   <option value="executado">Executado</option>
-                  <option value="intervencao">Intervenção</option>
                 </select>
               </div>
               <div>
@@ -265,7 +317,7 @@ export function ReceptionReports() {
                     Status
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Intervenção
+                    Criado em
                   </th>
                   {filters.reportType === 'checkups' && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -314,8 +366,7 @@ export function ReceptionReports() {
                       </span>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {filters.reportType === 'exams' && item.status === 'intervencao' ? 'Sim' : 'Não'}
-                      {filters.reportType === 'checkups' && 'N/A'}
+                      {new Date(item.created_at).toLocaleDateString('pt-BR')}
                     </td>
                     {filters.reportType === 'checkups' && (
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
