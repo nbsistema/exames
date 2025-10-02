@@ -26,8 +26,35 @@ export function ExamManagement() {
     payment_type: 'particular' as 'particular' | 'convenio',
     insurance_id: '',
     partner_id: '',
+    phone: '' // NOVO CAMPO
   });
   const { user } = useAuth();
+
+  // Função para formatar telefone com máscara
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    
+    if (numbers.length <= 10) {
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+    } else {
+      return numbers
+        .replace(/(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{5})(\d)/, '$1-$2');
+    }
+  };
+
+  // Handler específico para telefone
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    const formattedValue = formatPhone(rawValue);
+    
+    setFormData({ 
+      ...formData, 
+      phone: formattedValue 
+    });
+  };
 
   useEffect(() => {
     console.log('🔄 useEffect inicial - user:', user);
@@ -208,6 +235,7 @@ export function ExamManagement() {
       }
 
       setShowForm(false);
+      // Reset do formulário incluindo phone
       setFormData({
         patient_name: '',
         birth_date: '',
@@ -217,6 +245,7 @@ export function ExamManagement() {
         payment_type: 'particular',
         insurance_id: '',
         partner_id: currentPartner?.id || '',
+        phone: '' // RESET DO PHONE
       });
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
@@ -227,7 +256,6 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 ATUALIZADO: Função para atualizar conduta
   const handleConductUpdate = async (examId: string) => {
     try {
       const { error } = await supabase
@@ -259,7 +287,6 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 ATUALIZADO: Função para atualizar status (apenas encaminhado/executado)
   const handleStatusUpdate = async (examId: string, newStatus: string) => {
     try {
       const { error } = await supabase
@@ -291,7 +318,6 @@ export function ExamManagement() {
     }
   }, [currentPartner, user, loadData]);
 
-  // 🔥 ATUALIZADO: Cores dos status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'encaminhado':
@@ -303,13 +329,11 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 ATUALIZADO: Labels dos status
   const statusLabels = {
     encaminhado: 'Encaminhado ao CTR',
     executado: 'Executado'
   };
 
-  // 🔥 NOVO: Cores para conduta
   const getConductColor = (conduct: string) => {
     switch (conduct) {
       case 'cirurgica':
@@ -321,7 +345,6 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 NOVO: Labels para conduta
   const conductLabels = {
     cirurgica: 'Cirúrgica',
     ambulatorial: 'Ambulatorial'
@@ -400,7 +423,6 @@ export function ExamManagement() {
           )}
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Campos do formulário permanecem iguais */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
               <input
@@ -464,6 +486,24 @@ export function ExamManagement() {
                 placeholder="Ex: Raio-X, Ultrassom"
               />
             </div>
+            {/* NOVO CAMPO TELEFONE */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Telefone <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                required
+                value={formData.phone}
+                onChange={handlePhoneChange}
+                maxLength={15}
+                placeholder="(xx) xxxxx-xxxx"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Formato: (xx) xxxxx-xxxx
+              </p>
+            </div>
             {user?.profile === 'admin' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
@@ -513,11 +553,11 @@ export function ExamManagement() {
                   disabled={insurances.length === 0}
                 >
                   <option value="">{insurances.length === 0 ? 'Nenhum convênio cadastrado' : 'Selecione um convênio'}</option>
-               {insurances.map((insurance) => (
-                <option key={insurance.id} value={insurance.id}>
-              {insurance.name}
-              </option>
-              ))}
+                  {insurances.map((insurance) => (
+                    <option key={insurance.id} value={insurance.id}>
+                      {insurance.name}
+                    </option>
+                  ))}
                 </select>
                 {insurances.length === 0 && user?.profile === 'parceiro' && (
                   <p className="text-xs text-red-600 mt-1">
@@ -546,7 +586,6 @@ export function ExamManagement() {
         </div>
       )}
 
-      {/* 🔥 ATUALIZADO: Modal para Conduta */}
       {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
@@ -608,6 +647,9 @@ export function ExamManagement() {
                   Paciente
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Telefone
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Data Nascimento
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -643,6 +685,9 @@ export function ExamManagement() {
                 <tr key={exam.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {exam.patient_name}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {exam.phone || 'Não informado'}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(exam.birth_date).toLocaleDateString('pt-BR')}
@@ -689,7 +734,6 @@ export function ExamManagement() {
                           <Eye className="w-4 h-4" />
                         </button>
                       )}
-                      {/* 🔥 ATUALIZADO: Botão para conduta (apenas para exames executados) */}
                       {exam.status === 'executado' && (
                         <button
                           onClick={() => {
