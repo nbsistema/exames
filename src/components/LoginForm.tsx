@@ -347,7 +347,7 @@ export function LoginForm() {
               <p className="text-blue-100 text-sm">Soluções completas para sua empresa</p>
             </div>
             <div className="text-right">
-              <p className="text-blue-200 text-sm">📞 (98) 9999-9999</p>
+              <p className="text-blue-200 text-sm">📞 (98) 99228-7777</p>
               <p className="text-blue-100 text-sm">✉️ administracao@nbconsultoria.net</p>
             </div>
           </div>
