@@ -26,7 +26,7 @@ export function ExamManagement() {
     payment_type: 'particular' as 'particular' | 'convenio',
     insurance_id: '',
     partner_id: '',
-    phone: '' // NOVO CAMPO
+    phone: ''
   });
   const { user } = useAuth();
 
@@ -287,29 +287,8 @@ export function ExamManagement() {
     }
   };
 
-  const handleStatusUpdate = async (examId: string, newStatus: string) => {
-    try {
-      const { error } = await supabase
-        .from('exam_requests')
-        .update({ 
-          status: newStatus
-        })
-        .eq('id', examId);
-
-      if (error) throw error;
-
-      if (user?.profile === 'parceiro' && currentPartner) {
-        await loadData(currentPartner.id);
-      } else {
-        await loadData();
-      }
-
-      alert('Status atualizado com sucesso!');
-    } catch (error) {
-      console.error('Error updating status:', error);
-      alert('Erro ao atualizar status');
-    }
-  };
+  // 🔥 REMOVIDO: Função para atualizar status (apenas encaminhado/executado)
+  // O parceiro não pode executar exames, apenas a recepção
 
   useEffect(() => {
     if (currentPartner && user?.profile === 'parceiro') {
@@ -318,6 +297,7 @@ export function ExamManagement() {
     }
   }, [currentPartner, user, loadData]);
 
+  // 🔥 ATUALIZADO: Cores dos status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'encaminhado':
@@ -329,11 +309,13 @@ export function ExamManagement() {
     }
   };
 
+  // 🔥 ATUALIZADO: Labels dos status
   const statusLabels = {
     encaminhado: 'Encaminhado ao CTR',
     executado: 'Executado'
   };
 
+  // 🔥 NOVO: Cores para conduta
   const getConductColor = (conduct: string) => {
     switch (conduct) {
       case 'cirurgica':
@@ -345,6 +327,7 @@ export function ExamManagement() {
     }
   };
 
+  // 🔥 NOVO: Labels para conduta
   const conductLabels = {
     cirurgica: 'Cirúrgica',
     ambulatorial: 'Ambulatorial'
@@ -486,7 +469,7 @@ export function ExamManagement() {
                 placeholder="Ex: Raio-X, Ultrassom"
               />
             </div>
-            {/* NOVO CAMPO TELEFONE */}
+            {/* 🔥 NOVO CAMPO TELEFONE */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Telefone <span className="text-red-500">*</span>
@@ -586,6 +569,7 @@ export function ExamManagement() {
         </div>
       )}
 
+      {/* 🔥 ATUALIZADO: Modal para Conduta */}
       {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
@@ -708,9 +692,21 @@ export function ExamManagement() {
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap">
                     {exam.conduct ? (
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)}`}>
-                        {conductLabels[exam.conduct as keyof typeof conductLabels]}
-                      </span>
+                      <div 
+                        className="relative group"
+                        title={exam.conduct_observations || 'Sem observações'}
+                      >
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)} cursor-help`}>
+                          {conductLabels[exam.conduct as keyof typeof conductLabels]}
+                        </span>
+                        {/* Tooltip para observações */}
+                        {exam.conduct_observations && (
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 max-w-xs whitespace-normal break-words">
+                            {exam.conduct_observations}
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-gray-500">Não definida</span>
                     )}
@@ -725,19 +721,17 @@ export function ExamManagement() {
                   )}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
-                      {exam.status === 'encaminhado' && (
-                        <button
-                          onClick={() => handleStatusUpdate(exam.id, 'executado')}
-                          className="text-green-600 hover:text-green-800 transition-colors"
-                          title="Marcar como Executado"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* 🔥 REMOVIDO: Botão para marcar como executado (apenas para recepção) */}
+                      
+                      {/* 🔥 ATUALIZADO: Botão para conduta (apenas para exames executados) */}
                       {exam.status === 'executado' && (
                         <button
                           onClick={() => {
                             setSelectedExam(exam);
+                            setConductData({
+                              conduct: exam.conduct || '',
+                              conduct_observations: exam.conduct_observations || ''
+                            });
                             setShowConduct(true);
                           }}
                           className="text-blue-600 hover:text-blue-800 transition-colors"
