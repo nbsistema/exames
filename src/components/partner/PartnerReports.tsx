@@ -5,8 +5,8 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
-export function ExamReports() {
-  const [examRequests, setExamRequests] = useState<any[]>([]);
+export function PartnerReports() {
+  const [partnerRequests, setExamRequests] = useState<any[]>([]);
   const [filteredExams, setFilteredExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
