@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, FileText, Table } from 'lucide-react';
+import { Calendar, Download, Filter, FileText, Table, Phone } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -28,6 +28,7 @@ interface ReportData {
   type: 'exam' | 'checkup';
   conduct?: string;
   conduct_observations?: string;
+  phone?: string;
 }
 
 export function AdminReports() {
@@ -129,6 +130,7 @@ export function AdminReports() {
           observations: item.observations || '',
           conduct: item.conduct,
           conduct_observations: item.conduct_observations,
+          phone: item.phone || 'Não informado',
           created_at: item.created_at,
           type: 'exam' as const,
         }));
@@ -165,6 +167,7 @@ export function AdminReports() {
           unit_name: item.units?.name || 'Não encaminhado',
           exams_to_perform: item.exams_to_perform || [],
           observations: item.observations || '',
+          phone: item.phone || 'Não informado',
           created_at: item.created_at,
           type: 'checkup' as const,
         }));
@@ -225,22 +228,36 @@ export function AdminReports() {
       // Preparar dados para a tabela
       const tableData = reportData.map(item => [
         item.patient_name,
+        item.phone || 'Não informado',
         format(new Date(item.birth_date), 'dd/MM/yyyy'),
         item.type === 'exam' ? item.exam_type : item.battery_name,
         item.type === 'exam' ? item.doctor_name : item.requesting_company,
         getStatusLabel(item.status),
         item.type === 'exam' ? (item.payment_type === 'particular' ? 'Particular' : 'Convênio') : 'Check-up',
         item.conduct ? getConductLabel(item.conduct) : '',
+        item.conduct_observations ? item.conduct_observations.substring(0, 50) + (item.conduct_observations.length > 50 ? '...' : '') : '',
         format(new Date(item.created_at), 'dd/MM/yyyy'),
       ]);
 
       // Adicionar tabela
       autoTable(doc, {
-        head: [['Paciente', 'Nascimento', 'Exame/Bateria', 'Médico/Empresa', 'Status', 'Tipo', 'Conduta', 'Data']],
+        head: [['Paciente', 'Telefone', 'Nascimento', 'Exame/Bateria', 'Médico/Empresa', 'Status', 'Tipo', 'Conduta', 'Obs. Conduta', 'Data']],
         body: tableData,
         startY: 85,
-        styles: { fontSize: 8 },
+        styles: { fontSize: 7 },
         headStyles: { fillColor: [59, 130, 246] },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 12 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 12 },
+          6: { cellWidth: 12 },
+          7: { cellWidth: 12 },
+          8: { cellWidth: 20 },
+          9: { cellWidth: 12 }
+        },
       });
 
       // Salvar PDF
@@ -259,7 +276,9 @@ export function AdminReports() {
       // Preparar dados para Excel
       const excelData = reportData.map(item => ({
         'Paciente': item.patient_name,
+        'Telefone': item.phone || 'Não informado',
         'Data de Nascimento': format(new Date(item.birth_date), 'dd/MM/yyyy'),
+        'Data da Consulta': item.consultation_date ? format(new Date(item.consultation_date), 'dd/MM/yyyy') : '',
         'Tipo': item.type === 'exam' ? 'Exame' : 'Check-up',
         'Exame/Bateria': item.type === 'exam' ? item.exam_type : item.battery_name,
         'Médico/Empresa': item.type === 'exam' ? item.doctor_name : item.requesting_company,
@@ -281,7 +300,9 @@ export function AdminReports() {
       // Ajustar largura das colunas
       const colWidths = [
         { wch: 25 }, // Paciente
+        { wch: 18 }, // Telefone
         { wch: 15 }, // Data de Nascimento
+        { wch: 15 }, // Data da Consulta
         { wch: 10 }, // Tipo
         { wch: 30 }, // Exame/Bateria
         { wch: 25 }, // Médico/Empresa
@@ -525,6 +546,9 @@ export function AdminReports() {
                     Paciente
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Telefone
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Nascimento
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -543,6 +567,9 @@ export function AdminReports() {
                     Conduta
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Obs. Conduta
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pagamento
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -555,6 +582,12 @@ export function AdminReports() {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {item.patient_name}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center space-x-1">
+                        <Phone className="w-3 h-3 text-gray-400" />
+                        <span>{item.phone || 'Não informado'}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {format(new Date(item.birth_date), 'dd/MM/yyyy')}
@@ -585,6 +618,16 @@ export function AdminReports() {
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-gray-500 max-w-xs">
+                      <div className="break-words">
+                        {item.conduct_observations 
+                          ? (item.conduct_observations.length > 50 
+                              ? `${item.conduct_observations.substring(0, 50)}...` 
+                              : item.conduct_observations)
+                          : '-'
+                        }
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {item.type === 'exam' ? (
