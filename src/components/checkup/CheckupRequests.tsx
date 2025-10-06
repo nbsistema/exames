@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
-import { supabase, Battery } from '../../lib/supabase';
+import { Plus, Eye, Calendar } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export function CheckupRequests() {
-  const [batteries, setBatteries] = useState<Battery[]>([]);
+  const [checkupRequests, setCheckupRequests] = useState<any[]>([]);
+  const [batteries, setBatteries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [selectedBattery, setSelectedBattery] = useState<Battery | null>(null);
+  const [selectedBattery, setSelectedBattery] = useState<any>(null);
   const [formData, setFormData] = useState({
     patient_name: '',
     birth_date: '',
     battery_id: '',
     requesting_company: '',
     exams_to_perform: [] as string[],
-    checkup_date: '', // Novo campo adicionado
+    checkup_date: '',
   });
 
   useEffect(() => {
+    loadCheckupRequests();
     loadBatteries();
   }, []);
 
@@ -31,6 +33,24 @@ export function CheckupRequests() {
       setBatteries(data || []);
     } catch (error) {
       console.error('Error loading batteries:', error);
+    }
+  };
+
+  const loadCheckupRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('checkup_requests')
+        .select(`
+          *,
+          batteries(name),
+          units(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setCheckupRequests(data || []);
+    } catch (error) {
+      console.error('Error loading checkup requests:', error);
     }
   };
 
@@ -49,10 +69,8 @@ export function CheckupRequests() {
     setLoading(true);
 
     try {
-      // Preparar os dados para inserção
       const submitData = {
         ...formData,
-        // Garantir que a data do checkup seja enviada como null se estiver vazia
         checkup_date: formData.checkup_date || null,
       };
 
@@ -69,9 +87,10 @@ export function CheckupRequests() {
         battery_id: '',
         requesting_company: '',
         exams_to_perform: [],
-        checkup_date: '', // Reset do novo campo
+        checkup_date: '',
       });
       setSelectedBattery(null);
+      await loadCheckupRequests();
       alert('Solicitação de check-up criada com sucesso!');
     } catch (error) {
       console.error('Error creating checkup request:', error);
@@ -79,6 +98,28 @@ export function CheckupRequests() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'solicitado':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'encaminhado':
+        return 'bg-blue-100 text-blue-800';
+      case 'executado':
+        return 'bg-green-100 text-green-800';
+      case 'laudos_prontos':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const statusLabels = {
+    solicitado: 'Solicitado',
+    encaminhado: 'Encaminhado',
+    executado: 'Executado',
+    laudos_prontos: 'Laudos Prontos'
   };
 
   return (
@@ -164,7 +205,7 @@ export function CheckupRequests() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm text-gray-600 mb-2">Bateria selecionada: <strong>{selectedBattery.name}</strong></p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {selectedBattery.exams.map((exam, index) => (
+                    {selectedBattery.exams.map((exam: string, index: number) => (
                       <div key={index} className="flex items-center space-x-2">
                         <input
                           type="checkbox"
@@ -223,46 +264,79 @@ export function CheckupRequests() {
         </div>
       )}
 
+      {/* TABELA DE SOLICITAÇÕES (CORRIGIDA) */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Nome da Bateria
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Exames Inclusos
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Quantidade
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Criado em
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {batteries.map((battery) => (
-              <tr key={battery.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {battery.name}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="max-w-xs">
-                    {battery.exams.slice(0, 3).join(', ')}
-                    {battery.exams.length > 3 && ` +${battery.exams.length - 3} mais`}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {battery.exams.length} exames
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(battery.created_at).toLocaleDateString('pt-BR')}
-                </td>
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Histórico de Solicitações ({checkupRequests.length})
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Paciente
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Data Nascimento
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Empresa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Bateria
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Data Checkup
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Criado em
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {checkupRequests.map((request) => (
+                <tr key={request.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {request.patient_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(request.birth_date).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {request.requesting_company}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {request.batteries?.name || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div className="flex items-center gap-2">
+                      {request.checkup_date ? (
+                        <span className="text-green-600 font-medium">
+                          {new Date(request.checkup_date).toLocaleDateString('pt-BR')}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Não agendado</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
+                      {statusLabels[request.status as keyof typeof statusLabels]}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(request.created_at).toLocaleDateString('pt-BR')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
