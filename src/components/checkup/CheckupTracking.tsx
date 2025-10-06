@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Filter, X, Bell, Download, CheckCircle, Calendar } from 'lucide-react';
+import { Eye, Filter, X, Bell, Download, CheckCircle, Calendar, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function CheckupTracking() {
@@ -8,6 +8,7 @@ export function CheckupTracking() {
   const [filters, setFilters] = useState({
     status: '',
     company: '',
+    patientName: '', // Novo filtro adicionado
   });
   const [selectedExams, setSelectedExams] = useState<string[]>([]);
   const [showExamsModal, setShowExamsModal] = useState(false);
@@ -54,6 +55,10 @@ export function CheckupTracking() {
 
       if (filters.company) {
         query = query.ilike('requesting_company', `%${filters.company}%`);
+      }
+
+      if (filters.patientName) {
+        query = query.ilike('patient_name', `%${filters.patientName}%`);
       }
 
       const { data, error } = await query;
@@ -197,6 +202,15 @@ export function CheckupTracking() {
     return actions;
   };
 
+  // Função para limpar todos os filtros
+  const clearFilters = () => {
+    setFilters({
+      status: '',
+      company: '',
+      patientName: '',
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -207,11 +221,35 @@ export function CheckupTracking() {
       </div>
 
       <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-          <Filter className="w-4 h-4 mr-2" />
-          Filtros
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-sm font-medium text-gray-900 flex items-center">
+            <Filter className="w-4 h-4 mr-2" />
+            Filtros
+          </h3>
+          {(filters.status || filters.company || filters.patientName) && (
+            <button
+              onClick={clearFilters}
+              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            >
+              <X className="w-3 h-3" />
+              Limpar filtros
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={filters.patientName}
+                onChange={(e) => setFilters({ ...filters, patientName: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Buscar por paciente..."
+              />
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
@@ -237,6 +275,19 @@ export function CheckupTracking() {
             />
           </div>
         </div>
+        
+        {/* Contador de resultados */}
+        <div className="mt-3 text-xs text-gray-600">
+          {checkupRequests.length} resultado(s) encontrado(s)
+          {(filters.status || filters.company || filters.patientName) && (
+            <span className="ml-2">
+              • Filtros aplicados: 
+              {filters.patientName && ` Paciente: "${filters.patientName}"`}
+              {filters.status && ` Status: ${statusLabels[filters.status as keyof typeof statusLabels]}`}
+              {filters.company && ` Empresa: "${filters.company}"`}
+            </span>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -261,7 +312,7 @@ export function CheckupTracking() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Bateria
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Exames
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
