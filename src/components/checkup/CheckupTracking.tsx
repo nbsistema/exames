@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Filter } from 'lucide-react';
+import { Eye, Filter, X, Bell, Download, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function CheckupTracking() {
@@ -9,10 +9,30 @@ export function CheckupTracking() {
     status: '',
     company: '',
   });
+  const [selectedExams, setSelectedExams] = useState<string[]>([]);
+  const [showExamsModal, setShowExamsModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<string>('');
 
   useEffect(() => {
     loadCheckupRequests();
+    loadUserProfile();
   }, [filters]);
+
+  const loadUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('profile')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(profile?.profile || '');
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   const loadCheckupRequests = async () => {
     try {
@@ -44,6 +64,34 @@ export function CheckupTracking() {
     }
   };
 
+  const updateStatus = async (id: string, newStatus: string) => {
+    try {
+      const updateData: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      if (newStatus === 'laudos_prontos') {
+        updateData.laudos_prontos_at = new Date().toISOString();
+      } else if (newStatus === 'executado') {
+        updateData.notificado_checkup_at = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from('checkup_requests')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Recarregar a lista
+      loadCheckupRequests();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Erro ao atualizar status');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'solicitado':
@@ -52,6 +100,8 @@ export function CheckupTracking() {
         return 'bg-blue-100 text-blue-800';
       case 'executado':
         return 'bg-green-100 text-green-800';
+      case 'laudos_prontos':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -60,13 +110,68 @@ export function CheckupTracking() {
   const statusLabels = {
     solicitado: 'Solicitado',
     encaminhado: 'Encaminhado',
-    executado: 'Executado'
+    executado: 'Executado',
+    laudos_prontos: 'Laudos Prontos'
+  };
+
+  const openExamsModal = (exams: string[]) => {
+    setSelectedExams(exams);
+    setShowExamsModal(true);
+  };
+
+  const canUpdateStatus = (currentStatus: string, newStatus: string) => {
+    // Recepção pode marcar como "executado" e "laudos_prontos"
+    if (userProfile === 'recepcao') {
+      return ['executado', 'laudos_prontos'].includes(newStatus);
+    }
+    
+    // Checkup pode marcar como "executado" quando busca os laudos
+    if (userProfile === 'checkup') {
+      return newStatus === 'executado';
+    }
+    
+    return false;
+  };
+
+  const getStatusActions = (checkup: any) => {
+    const actions = [];
+    
+    if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
+      actions.push(
+        {
+          label: 'Marcar como Executado',
+          status: 'executado',
+          icon: <CheckCircle className="w-4 h-4" />,
+          color: 'green'
+        },
+        {
+          label: 'Laudos Prontos',
+          status: 'laudos_prontos',
+          icon: <Bell className="w-4 h-4" />,
+          color: 'purple'
+        }
+      );
+    }
+    
+    if (userProfile === 'checkup' && checkup.status === 'laudos_prontos') {
+      actions.push({
+        label: 'Buscar Laudos',
+        status: 'executado',
+        icon: <Download className="w-4 h-4" />,
+        color: 'blue'
+      });
+    }
+    
+    return actions;
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-900">Acompanhamento de Pedidos de Check-up</h2>
+        <div className="text-sm text-gray-500">
+          Perfil: <span className="font-medium capitalize">{userProfile}</span>
+        </div>
       </div>
 
       <div className="bg-gray-50 rounded-lg p-4">
@@ -86,6 +191,7 @@ export function CheckupTracking() {
               <option value="solicitado">Solicitado</option>
               <option value="encaminhado">Encaminhado</option>
               <option value="executado">Executado</option>
+              <option value="laudos_prontos">Laudos Prontos</option>
             </select>
           </div>
           <div>
@@ -132,41 +238,125 @@ export function CheckupTracking() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Criado em
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {checkupRequests.map((checkup) => (
-                  <tr key={checkup.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {checkup.patient_name}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(checkup.birth_date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {checkup.requesting_company}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {checkup.batteries?.name || 'N/A'}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-500">
-                      <div className="max-w-xs">
-                        {checkup.exams_to_perform.slice(0, 2).join(', ')}
-                        {checkup.exams_to_perform.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
-                        {statusLabels[checkup.status as keyof typeof statusLabels]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(checkup.created_at).toLocaleDateString('pt-BR')}
-                    </td>
-                  </tr>
-                ))}
+                {checkupRequests.map((checkup) => {
+                  const statusActions = getStatusActions(checkup);
+                  
+                  return (
+                    <tr key={checkup.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {checkup.patient_name}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(checkup.birth_date).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.requesting_company}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.batteries?.name || 'N/A'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500">
+                        <div className="max-w-xs">
+                          <button
+                            onClick={() => openExamsModal(checkup.exams_to_perform)}
+                            className="text-left hover:text-blue-600 transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <Eye className="w-4 h-4" />
+                              <span>
+                                {checkup.exams_to_perform.length} exame
+                                {checkup.exams_to_perform.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {checkup.exams_to_perform.slice(0, 2).join(', ')}
+                              {checkup.exams_to_perform.length > 2 && ` ...`}
+                            </div>
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
+                          {statusLabels[checkup.status as keyof typeof statusLabels]}
+                        </span>
+                        {checkup.laudos_prontos_at && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-2">
+                          {statusActions.map((action, index) => (
+                            <button
+                              key={index}
+                              onClick={() => updateStatus(checkup.id, action.status)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
+                            >
+                              {action.icon}
+                              {action.label}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para exibir todos os exames */}
+      {showExamsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold">
+                Exames Solicitados ({selectedExams.length})
+              </h3>
+              <button
+                onClick={() => setShowExamsModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-3">
+                {selectedExams.map((exam, index) => (
+                  <div
+                    key={index}
+                    className="p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full text-sm flex items-center justify-center mt-0.5">
+                        {index + 1}
+                      </span>
+                      <span className="text-gray-700">{exam}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end p-6 border-t">
+              <button
+                onClick={() => setShowExamsModal(false)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
