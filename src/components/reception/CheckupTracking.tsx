@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, MessageSquare, RefreshCw } from 'lucide-react';
+import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download } from 'lucide-react';
 import { supabase, Unit } from '../../lib/supabase';
 
 export function CheckupTracking() {
@@ -12,8 +12,10 @@ export function CheckupTracking() {
   const [observations, setObservations] = useState('');
   const [showForwardForm, setShowForwardForm] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [userProfile, setUserProfile] = useState<string>('');
 
   useEffect(() => {
+    loadUserProfile();
     loadData();
     
     // Auto-refresh a cada 1 minuto
@@ -23,6 +25,22 @@ export function CheckupTracking() {
 
     return () => clearInterval(interval);
   }, []);
+
+  const loadUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('profile')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(profile?.profile || '');
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   const loadData = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -69,6 +87,7 @@ export function CheckupTracking() {
           unit_id: selectedUnit,
           status: 'encaminhado',
           observations: observations,
+          updated_at: new Date().toISOString()
         })
         .eq('id', selectedCheckup.id);
 
@@ -86,6 +105,35 @@ export function CheckupTracking() {
     }
   };
 
+  // 🔥 NOVO: Função para atualizar status (laudos prontos / executado)
+  const updateStatus = async (id: string, newStatus: string) => {
+    try {
+      const updateData: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      if (newStatus === 'laudos_prontos') {
+        updateData.laudos_prontos_at = new Date().toISOString();
+      } else if (newStatus === 'executado') {
+        updateData.notificado_checkup_at = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from('checkup_requests')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await loadData(false);
+      alert('Status atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Erro ao atualizar status');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'solicitado':
@@ -94,6 +142,8 @@ export function CheckupTracking() {
         return 'bg-blue-100 text-blue-800';
       case 'executado':
         return 'bg-green-100 text-green-800';
+      case 'laudos_prontos':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -102,7 +152,8 @@ export function CheckupTracking() {
   const statusLabels = {
     solicitado: 'Solicitado',
     encaminhado: 'Encaminhado',
-    executado: 'Executado'
+    executado: 'Executado',
+    laudos_prontos: 'Laudos Prontos'
   };
 
   const formatLastUpdate = () => {
@@ -118,10 +169,46 @@ export function CheckupTracking() {
       solicitado: checkupRequests.filter(c => c.status === 'solicitado').length,
       encaminhado: checkupRequests.filter(c => c.status === 'encaminhado').length,
       executado: checkupRequests.filter(c => c.status === 'executado').length,
+      laudos_prontos: checkupRequests.filter(c => c.status === 'laudos_prontos').length,
     };
   };
 
   const statusCounts = getStatusCounts();
+
+  // 🔥 NOVO: Ações disponíveis por perfil
+  const getStatusActions = (checkup: any) => {
+    const actions = [];
+    
+    // Recepção pode marcar como executado ou laudos prontos
+    if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
+      actions.push(
+        {
+          label: 'Marcar Executado',
+          status: 'executado',
+          icon: <CheckCircle className="w-4 h-4" />,
+          color: 'green'
+        },
+        {
+          label: 'Laudos Prontos',
+          status: 'laudos_prontos',
+          icon: <Bell className="w-4 h-4" />,
+          color: 'purple'
+        }
+      );
+    }
+    
+    // Checkup pode buscar laudos quando estão prontos
+    if (userProfile === 'checkup' && checkup.status === 'laudos_prontos') {
+      actions.push({
+        label: 'Buscar Laudos',
+        status: 'executado',
+        icon: <Download className="w-4 h-4" />,
+        color: 'blue'
+      });
+    }
+    
+    return actions;
+  };
 
   return (
     <div className="space-y-6">
@@ -132,6 +219,9 @@ export function CheckupTracking() {
             Última atualização: {formatLastUpdate()} • 
             <span className="text-green-600 ml-1">Atualização automática a cada 1 minuto</span>
           </p>
+          <div className="text-sm text-gray-500 mt-1">
+            Perfil: <span className="font-medium capitalize">{userProfile}</span>
+          </div>
         </div>
         <button
           onClick={refreshData}
@@ -143,8 +233,8 @@ export function CheckupTracking() {
         </button>
       </div>
 
-      {/* Status Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Status Summary - ATUALIZADO com Laudos Prontos */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-gray-900">{checkupRequests.length}</div>
           <div className="text-sm text-gray-600">Total de Check-ups</div>
@@ -156,6 +246,10 @@ export function CheckupTracking() {
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-blue-600">{statusCounts.encaminhado}</div>
           <div className="text-sm text-gray-600">Encaminhados</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-purple-600">{statusCounts.laudos_prontos}</div>
+          <div className="text-sm text-gray-600">Laudos Prontos</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-green-600">{statusCounts.executado}</div>
@@ -272,63 +366,89 @@ export function CheckupTracking() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {checkupRequests.map((checkup) => (
-                  <tr key={checkup.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {checkup.patient_name}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(checkup.birth_date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {checkup.requesting_company}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {checkup.batteries?.name || 'N/A'}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-500">
-                      <div className="max-w-xs">
-                        {checkup.exams_to_perform?.slice(0, 2).join(', ')}
-                        {checkup.exams_to_perform?.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
-                        {statusLabels[checkup.status as keyof typeof statusLabels]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {checkup.units?.name || 'Não encaminhado'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex space-x-2">
-                        {checkup.status === 'solicitado' && (
-                          <button
-                            onClick={() => {
-                              setSelectedCheckup(checkup);
-                              setShowForwardForm(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Encaminhar para Unidade"
-                          >
-                            <ArrowRight className="w-4 h-4" />
-                          </button>
-                        )}
-                        {checkup.observations && (
-                          <button
-                            className="text-gray-600 hover:text-gray-800 transition-colors"
-                            title={`Observações: ${checkup.observations}`}
-                          >
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {checkupRequests.map((checkup) => {
+                  const statusActions = getStatusActions(checkup);
+                  
+                  return (
+                    <tr key={checkup.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {checkup.patient_name}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(checkup.birth_date).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.requesting_company}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.batteries?.name || 'N/A'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500">
+                        <div className="max-w-xs">
+                          {checkup.exams_to_perform?.slice(0, 2).join(', ')}
+                          {checkup.exams_to_perform?.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-1">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
+                            {statusLabels[checkup.status as keyof typeof statusLabels]}
+                          </span>
+                          {checkup.laudos_prontos_at && (
+                            <div className="text-xs text-gray-500">
+                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.units?.name || 'Não encaminhado'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-2">
+                          {/* Ação de encaminhar para unidade */}
+                          {checkup.status === 'solicitado' && userProfile === 'recepcao' && (
+                            <button
+                              onClick={() => {
+                                setSelectedCheckup(checkup);
+                                setShowForwardForm(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              title="Encaminhar para Unidade"
+                            >
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Ações de status */}
+                          {statusActions.map((action, index) => (
+                            <button
+                              key={index}
+                              onClick={() => updateStatus(checkup.id, action.status)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
+                              title={action.label}
+                            >
+                              {action.icon}
+                            </button>
+                          ))}
+
+                          {/* Observações */}
+                          {checkup.observations && (
+                            <button
+                              className="text-gray-600 hover:text-gray-800 transition-colors"
+                              title={`Observações: ${checkup.observations}`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
