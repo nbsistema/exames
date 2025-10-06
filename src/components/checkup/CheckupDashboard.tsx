@@ -1,132 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, Clipboard, Users, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { Building2, Clipboard, Users, Activity, BarChart3 } from 'lucide-react';
 import { BatteryManagement } from './BatteryManagement';
 import { CheckupRequests } from './CheckupRequests';
 import { CheckupTracking } from './CheckupTracking';
 import { CheckupOverview } from './CheckupOverview';
-import { supabase } from '../../lib/supabase';
+import { CheckupReports } from './CheckupReports'; // Importe o novo componente
 
-type CheckupTab = 'overview' | 'batteries' | 'requests' | 'tracking';
+type CheckupTab = 'overview' | 'batteries' | 'requests' | 'tracking' | 'reports';
 
 export function CheckupDashboard() {
   const [activeTab, setActiveTab] = useState<CheckupTab>('overview');
-  const [updateCount, setUpdateCount] = useState(0);
-  const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(false);
 
   const tabs = [
     { id: 'overview', label: 'Visão Geral', icon: Activity },
     { id: 'batteries', label: 'Baterias', icon: Clipboard },
     { id: 'requests', label: 'Solicitações', icon: Users },
     { id: 'tracking', label: 'Acompanhamento', icon: Building2 },
+    { id: 'reports', label: 'Relatórios', icon: BarChart3 }, // Nova aba
   ];
-
-  // Configurar real-time para monitorar mudanças na tabela checkup_requests
-  useEffect(() => {
-    // Verificar se o real-time está habilitado no Supabase
-    const checkRealtimeStatus = async () => {
-      try {
-        // Testar uma consulta simples para verificar a conexão
-        const { data, error } = await supabase
-          .from('checkup_requests')
-          .select('id')
-          .limit(1);
-        
-        if (!error) {
-          setIsRealTimeEnabled(true);
-          setupRealtimeSubscription();
-        }
-      } catch (error) {
-        console.warn('Real-time não disponível, usando polling:', error);
-        setupPolling();
-      }
-    };
-
-    checkRealtimeStatus();
-
-    // Cleanup function
-    return () => {
-      // O Supabase gerencia automaticamente a limpeza das subscriptions
-      // quando o componente é desmontado
-    };
-  }, []);
-
-  const setupRealtimeSubscription = () => {
-    try {
-      const subscription = supabase
-        .channel('checkup-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*', // INSERT, UPDATE, DELETE
-            schema: 'public',
-            table: 'checkup_requests'
-          },
-          (payload) => {
-            console.log('Mudança detectada no real-time:', payload);
-            
-            // Só incrementar se não estiver na aba de tracking
-            if (activeTab !== 'tracking') {
-              setUpdateCount(prev => prev + 1);
-            }
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public', 
-            table: 'checkup_requests',
-            filter: 'status=eq.laudos_prontos' // Só escutar quando status mudar para "laudos_prontos"
-          },
-          (payload) => {
-            console.log('Laudo pronto detectado:', payload);
-            
-            if (activeTab !== 'tracking') {
-              setUpdateCount(prev => prev + 1);
-            }
-          }
-        )
-        .subscribe((status) => {
-          console.log('Status da subscription:', status);
-        });
-
-    } catch (error) {
-      console.error('Erro ao configurar real-time:', error);
-      setupPolling();
-    }
-  };
-
-  const setupPolling = () => {
-    // Fallback: verificar atualizações a cada 30 segundos
-    const interval = setInterval(async () => {
-      if (activeTab !== 'tracking') {
-        try {
-          const { data, error } = await supabase
-            .from('checkup_requests')
-            .select('updated_at')
-            .order('updated_at', { ascending: false })
-            .limit(1);
-
-          if (!error && data && data.length > 0) {
-            // Lógica simples para detectar mudanças
-            // Em uma implementação real, você compararia com um timestamp salvo
-            setUpdateCount(prev => prev + 1);
-          }
-        } catch (error) {
-          console.error('Erro no polling:', error);
-        }
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  };
-
-  // Resetar contador quando mudar para a aba de acompanhamento
-  useEffect(() => {
-    if (activeTab === 'tracking') {
-      setUpdateCount(0);
-    }
-  }, [activeTab]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -138,39 +29,18 @@ export function CheckupDashboard() {
         return <CheckupRequests />;
       case 'tracking':
         return <CheckupTracking />;
+      case 'reports':
+        return <CheckupReports />; // Novo caso
       default:
         return <CheckupOverview />;
     }
-  };
-
-  const getTrackingTabLabel = () => {
-    const trackingTab = tabs.find(tab => tab.id === 'tracking');
-    if (!trackingTab) return 'Acompanhamento';
-
-    if (updateCount > 0) {
-      return (
-        <div className="flex items-center gap-2">
-          <span>{trackingTab.label}</span>
-          <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
-            {updateCount}
-          </span>
-        </div>
-      );
-    }
-
-    return trackingTab.label;
   };
 
   return (
     <div className="p-6">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Painel Check-up</h1>
-        <p className="text-gray-600">Gerencie baterias de exames e solicitações de check-up</p>
-        {!isRealTimeEnabled && (
-          <p className="text-yellow-600 text-sm mt-2">
-            ⚠️ Modo offline - atualizações podem não ser em tempo real
-          </p>
-        )}
+        <p className="text-gray-600">Gerencie baterias de exames, solicitações e relatórios de check-up</p>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm">
@@ -178,22 +48,18 @@ export function CheckupDashboard() {
           <nav className="flex space-x-8 px-6">
             {tabs.map((tab) => {
               const Icon = tab.icon;
-              const isTrackingTab = tab.id === 'tracking';
-              
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as CheckupTab)}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors relative ${
+                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span>
-                    {isTrackingTab ? getTrackingTabLabel() : tab.label}
-                  </span>
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
