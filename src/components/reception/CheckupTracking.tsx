@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download } from 'lucide-react';
+import { ArrowRight, MessageSquare, RefreshCw, Bell, Download, CheckCircle } from 'lucide-react';
 import { supabase, Unit } from '../../lib/supabase';
 
 export function CheckupTracking() {
@@ -18,7 +18,6 @@ export function CheckupTracking() {
     loadUserProfile();
     loadData();
     
-    // Auto-refresh a cada 1 minuto
     const interval = setInterval(() => {
       refreshData();
     }, 60000);
@@ -77,6 +76,7 @@ export function CheckupTracking() {
     setRefreshing(false);
   };
 
+  // 🔥 CORRIGIDO: Checkup encaminha para unidade
   const handleForwardToUnit = async () => {
     if (!selectedCheckup || !selectedUnit) return;
 
@@ -105,7 +105,7 @@ export function CheckupTracking() {
     }
   };
 
-  // 🔥 NOVO: Função para atualizar status (laudos prontos / executado)
+  // 🔥 CORRIGIDO: Funções de atualização de status por perfil
   const updateStatus = async (id: string, newStatus: string) => {
     try {
       const updateData: any = {
@@ -113,10 +113,12 @@ export function CheckupTracking() {
         updated_at: new Date().toISOString()
       };
 
-      if (newStatus === 'laudos_prontos') {
+      if (newStatus === 'executado') {
+        updateData.executado_at = new Date().toISOString();
+      } else if (newStatus === 'laudos_prontos') {
         updateData.laudos_prontos_at = new Date().toISOString();
-      } else if (newStatus === 'executado') {
-        updateData.notificado_checkup_at = new Date().toISOString();
+      } else if (newStatus === 'encaminhado') {
+        updateData.laudos_buscados_at = new Date().toISOString();
       }
 
       const { error } = await supabase
@@ -173,35 +175,45 @@ export function CheckupTracking() {
     };
   };
 
-  const statusCounts = getStatusCounts();
-
-  // 🔥 NOVO: Ações disponíveis por perfil
+  // 🔥 CORRIGIDO: Ações por perfil conforme o fluxo correto
   const getStatusActions = (checkup: any) => {
     const actions = [];
     
-    // Recepção pode marcar como executado ou laudos prontos
-    if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
-      actions.push(
-        {
-          label: 'Marcar Executado',
-          status: 'executado',
-          icon: <CheckCircle className="w-4 h-4" />,
-          color: 'green'
-        },
-        {
-          label: 'Laudos Prontos',
-          status: 'laudos_prontos',
-          icon: <Bell className="w-4 h-4" />,
-          color: 'purple'
-        }
-      );
+    // CHECKUP: Pode encaminhar para unidade (solicitado → encaminhado)
+    if (userProfile === 'checkup' && checkup.status === 'solicitado') {
+      actions.push({
+        label: 'Encaminhar para Unidade',
+        status: 'encaminhado',
+        icon: <ArrowRight className="w-4 h-4" />,
+        color: 'blue'
+      });
     }
     
-    // Checkup pode buscar laudos quando estão prontos
+    // RECEPÇÃO: Pode marcar como executado (encaminhado → executado)
+    if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
+      actions.push({
+        label: 'Marcar como Executado',
+        status: 'executado',
+        icon: <CheckCircle className="w-4 h-4" />,
+        color: 'green'
+      });
+    }
+    
+    // RECEPÇÃO: Pode sinalizar laudos prontos (executado → laudos_prontos)
+    if (userProfile === 'recepcao' && checkup.status === 'executado') {
+      actions.push({
+        label: 'Laudos Prontos',
+        status: 'laudos_prontos',
+        icon: <Bell className="w-4 h-4" />,
+        color: 'purple'
+      });
+    }
+    
+    // CHECKUP: Pode buscar laudos (laudos_prontos → encaminhado)
     if (userProfile === 'checkup' && checkup.status === 'laudos_prontos') {
       actions.push({
         label: 'Buscar Laudos',
-        status: 'executado',
+        status: 'encaminhado', // Volta para encaminhado indicando que foi buscado
         icon: <Download className="w-4 h-4" />,
         color: 'blue'
       });
@@ -209,6 +221,8 @@ export function CheckupTracking() {
     
     return actions;
   };
+
+  const statusCounts = getStatusCounts();
 
   return (
     <div className="space-y-6">
@@ -233,11 +247,11 @@ export function CheckupTracking() {
         </button>
       </div>
 
-      {/* Status Summary - ATUALIZADO com Laudos Prontos */}
+      {/* Status Summary */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-gray-900">{checkupRequests.length}</div>
-          <div className="text-sm text-gray-600">Total de Check-ups</div>
+          <div className="text-sm text-gray-600">Total</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-yellow-600">{statusCounts.solicitado}</div>
@@ -248,12 +262,12 @@ export function CheckupTracking() {
           <div className="text-sm text-gray-600">Encaminhados</div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <div className="text-2xl font-bold text-purple-600">{statusCounts.laudos_prontos}</div>
-          <div className="text-sm text-gray-600">Laudos Prontos</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-2xl font-bold text-green-600">{statusCounts.executado}</div>
           <div className="text-sm text-gray-600">Executados</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="text-2xl font-bold text-purple-600">{statusCounts.laudos_prontos}</div>
+          <div className="text-sm text-gray-600">Laudos Prontos</div>
         </div>
       </div>
 
@@ -340,16 +354,13 @@ export function CheckupTracking() {
                     Paciente
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data Nascimento
+                    Data Nasc.
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Empresa Solicitante
+                    Empresa
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Bateria
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Exames
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -383,12 +394,6 @@ export function CheckupTracking() {
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {checkup.batteries?.name || 'N/A'}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500">
-                        <div className="max-w-xs">
-                          {checkup.exams_to_perform?.slice(0, 2).join(', ')}
-                          {checkup.exams_to_perform?.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
-                        </div>
-                      </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex flex-col space-y-1">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
@@ -396,30 +401,31 @@ export function CheckupTracking() {
                           </span>
                           {checkup.laudos_prontos_at && (
                             <div className="text-xs text-gray-500">
-                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                              Laudos prontos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
                             </div>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {checkup.units?.name || 'Não encaminhado'}
+                        {checkup.units?.name || 'Não definida'}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-wrap gap-2">
-                          {/* Ação de encaminhar para unidade */}
-                          {checkup.status === 'solicitado' && userProfile === 'recepcao' && (
+                          {/* Botão de encaminhar (apenas para checkup) */}
+                          {userProfile === 'checkup' && checkup.status === 'solicitado' && (
                             <button
                               onClick={() => {
                                 setSelectedCheckup(checkup);
                                 setShowForwardForm(true);
                               }}
-                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
                               title="Encaminhar para Unidade"
                             >
-                              <ArrowRight className="w-4 h-4" />
+                              <ArrowRight className="w-3 h-3" />
+                              Encaminhar
                             </button>
                           )}
 
@@ -432,6 +438,9 @@ export function CheckupTracking() {
                               title={action.label}
                             >
                               {action.icon}
+                              {action.label.includes('Laudos') ? 'Laudos' : 
+                               action.label.includes('Buscar') ? 'Buscar' : 
+                               action.label.includes('Executado') ? 'Executado' : 'Encaminhar'}
                             </button>
                           ))}
 
