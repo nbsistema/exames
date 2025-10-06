@@ -35,6 +35,7 @@ export function CheckupTracking() {
           .eq('id', user.id)
           .single();
         setUserProfile(profile?.profile || '');
+        console.log('👤 Perfil carregado:', profile?.profile);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -63,6 +64,14 @@ export function CheckupTracking() {
       setCheckupRequests(checkupsRes.data || []);
       setUnits(unitsRes.data || []);
       setLastUpdate(new Date());
+      
+      console.log('📊 Checkups carregados:', checkupsRes.data?.length);
+      console.log('🔍 Status dos checkups:', checkupsRes.data?.map(c => ({
+        id: c.id,
+        paciente: c.patient_name,
+        status: c.status,
+        perfil: userProfile
+      })));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -76,7 +85,7 @@ export function CheckupTracking() {
     setRefreshing(false);
   };
 
-  // 🔥 CORRIGIDO: Checkup encaminha para unidade
+  // Checkup encaminha para unidade
   const handleForwardToUnit = async () => {
     if (!selectedCheckup || !selectedUnit) return;
 
@@ -105,7 +114,7 @@ export function CheckupTracking() {
     }
   };
 
-  // 🔥 CORRIGIDO: Funções de atualização de status por perfil
+  // Função para atualizar status
   const updateStatus = async (id: string, newStatus: string) => {
     try {
       const updateData: any = {
@@ -117,9 +126,9 @@ export function CheckupTracking() {
         updateData.executado_at = new Date().toISOString();
       } else if (newStatus === 'laudos_prontos') {
         updateData.laudos_prontos_at = new Date().toISOString();
-      } else if (newStatus === 'encaminhado') {
-        updateData.laudos_buscados_at = new Date().toISOString();
       }
+
+      console.log('🔄 Atualizando status:', { id, newStatus, updateData });
 
       const { error } = await supabase
         .from('checkup_requests')
@@ -166,20 +175,17 @@ export function CheckupTracking() {
     });
   };
 
-  const getStatusCounts = () => {
-    return {
-      solicitado: checkupRequests.filter(c => c.status === 'solicitado').length,
-      encaminhado: checkupRequests.filter(c => c.status === 'encaminhado').length,
-      executado: checkupRequests.filter(c => c.status === 'executado').length,
-      laudos_prontos: checkupRequests.filter(c => c.status === 'laudos_prontos').length,
-    };
-  };
-
-  // 🔥 CORRIGIDO: Ações por perfil conforme o fluxo correto
+  // 🔥 CORREÇÃO: Ações simplificadas e debugadas
   const getStatusActions = (checkup: any) => {
     const actions = [];
     
-    // CHECKUP: Pode encaminhar para unidade (solicitado → encaminhado)
+    console.log('🔍 Verificando ações para:', {
+      perfil: userProfile,
+      status: checkup.status,
+      paciente: checkup.patient_name
+    });
+
+    // CHECKUP: Pode encaminhar para unidade
     if (userProfile === 'checkup' && checkup.status === 'solicitado') {
       actions.push({
         label: 'Encaminhar para Unidade',
@@ -189,7 +195,7 @@ export function CheckupTracking() {
       });
     }
     
-    // RECEPÇÃO: Pode marcar como executado (encaminhado → executado)
+    // RECEPÇÃO: Pode marcar como executado
     if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
       actions.push({
         label: 'Marcar como Executado',
@@ -199,7 +205,7 @@ export function CheckupTracking() {
       });
     }
     
-    // RECEPÇÃO: Pode sinalizar laudos prontos (executado → laudos_prontos)
+    // RECEPÇÃO: Pode sinalizar laudos prontos
     if (userProfile === 'recepcao' && checkup.status === 'executado') {
       actions.push({
         label: 'Laudos Prontos',
@@ -209,17 +215,28 @@ export function CheckupTracking() {
       });
     }
     
-    // CHECKUP: Pode buscar laudos (laudos_prontos → encaminhado)
+    // CHECKUP: Pode buscar laudos
     if (userProfile === 'checkup' && checkup.status === 'laudos_prontos') {
       actions.push({
         label: 'Buscar Laudos',
-        status: 'encaminhado', // Volta para encaminhado indicando que foi buscado
+        status: 'encaminhado', // Volta para encaminhado após buscar
         icon: <Download className="w-4 h-4" />,
         color: 'blue'
       });
     }
+
+    console.log('✅ Ações encontradas:', actions.length, 'para', checkup.patient_name);
     
     return actions;
+  };
+
+  const getStatusCounts = () => {
+    return {
+      solicitado: checkupRequests.filter(c => c.status === 'solicitado').length,
+      encaminhado: checkupRequests.filter(c => c.status === 'encaminhado').length,
+      executado: checkupRequests.filter(c => c.status === 'executado').length,
+      laudos_prontos: checkupRequests.filter(c => c.status === 'laudos_prontos').length,
+    };
   };
 
   const statusCounts = getStatusCounts();
@@ -245,6 +262,21 @@ export function CheckupTracking() {
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           <span>{refreshing ? 'Atualizando...' : 'Atualizar'}</span>
         </button>
+      </div>
+
+      {/* Debug Info */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-yellow-800 mb-2">🔍 Debug Info</h3>
+        <div className="text-xs text-yellow-700 space-y-1">
+          <div>Perfil atual: <strong>{userProfile}</strong></div>
+          <div>Checkups carregados: <strong>{checkupRequests.length}</strong></div>
+          <div>Status disponíveis: 
+            <strong> {checkupRequests.filter(c => c.status === 'solicitado').length} solicitado,</strong>
+            <strong> {checkupRequests.filter(c => c.status === 'encaminhado').length} encaminhado,</strong>
+            <strong> {checkupRequests.filter(c => c.status === 'executado').length} executado,</strong>
+            <strong> {checkupRequests.filter(c => c.status === 'laudos_prontos').length} laudos_prontos</strong>
+          </div>
+        </div>
       </div>
 
       {/* Status Summary */}
@@ -360,9 +392,6 @@ export function CheckupTracking() {
                     Empresa
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bateria
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -391,9 +420,6 @@ export function CheckupTracking() {
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {checkup.requesting_company}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {checkup.batteries?.name || 'N/A'}
-                      </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex flex-col space-y-1">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
@@ -401,7 +427,7 @@ export function CheckupTracking() {
                           </span>
                           {checkup.laudos_prontos_at && (
                             <div className="text-xs text-gray-500">
-                              Laudos prontos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
                             </div>
                           )}
                         </div>
@@ -421,7 +447,7 @@ export function CheckupTracking() {
                                 setSelectedCheckup(checkup);
                                 setShowForwardForm(true);
                               }}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                              className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
                               title="Encaminhar para Unidade"
                             >
                               <ArrowRight className="w-3 h-3" />
@@ -434,20 +460,22 @@ export function CheckupTracking() {
                             <button
                               key={index}
                               onClick={() => updateStatus(checkup.id, action.status)}
-                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
+                              className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
                               title={action.label}
                             >
                               {action.icon}
-                              {action.label.includes('Laudos') ? 'Laudos' : 
-                               action.label.includes('Buscar') ? 'Buscar' : 
-                               action.label.includes('Executado') ? 'Executado' : 'Encaminhar'}
+                              <span>
+                                {action.label.includes('Laudos') ? 'Laudos Prontos' : 
+                                 action.label.includes('Buscar') ? 'Buscar Laudos' : 
+                                 action.label.includes('Executado') ? 'Executado' : 'Encaminhar'}
+                              </span>
                             </button>
                           ))}
 
                           {/* Observações */}
                           {checkup.observations && (
                             <button
-                              className="text-gray-600 hover:text-gray-800 transition-colors"
+                              className="text-gray-600 hover:text-gray-800 transition-colors p-1"
                               title={`Observações: ${checkup.observations}`}
                             >
                               <MessageSquare className="w-4 h-4" />
