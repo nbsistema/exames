@@ -13,6 +13,7 @@ export function CheckupRequests() {
     battery_id: '',
     requesting_company: '',
     exams_to_perform: [] as string[],
+    checkup_date: '', // Novo campo adicionado
   });
 
   useEffect(() => {
@@ -48,9 +49,16 @@ export function CheckupRequests() {
     setLoading(true);
 
     try {
+      // Preparar os dados para inserção
+      const submitData = {
+        ...formData,
+        // Garantir que a data do checkup seja enviada como null se estiver vazia
+        checkup_date: formData.checkup_date || null,
+      };
+
       const { error } = await supabase
         .from('checkup_requests')
-        .insert([formData]);
+        .insert([submitData]);
 
       if (error) throw error;
 
@@ -61,6 +69,7 @@ export function CheckupRequests() {
         battery_id: '',
         requesting_company: '',
         exams_to_perform: [],
+        checkup_date: '', // Reset do novo campo
       });
       setSelectedBattery(null);
       alert('Solicitação de check-up criada com sucesso!');
@@ -119,6 +128,17 @@ export function CheckupRequests() {
                   onChange={(e) => setFormData({ ...formData, requesting_company: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data do Checkup</label>
+                <input
+                  type="date"
+                  value={formData.checkup_date}
+                  onChange={(e) => setFormData({ ...formData, checkup_date: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Opcional"
+                />
+                <p className="text-xs text-gray-500 mt-1">Data prevista para realização do checkup (opcional)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bateria de Check-up</label>
@@ -184,7 +204,14 @@ export function CheckupRequests() {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
-                  setFormData({ name: '', birth_date: '', battery_id: '', requesting_company: '', exams_to_perform: [] });
+                  setFormData({ 
+                    patient_name: '', 
+                    birth_date: '', 
+                    battery_id: '', 
+                    requesting_company: '', 
+                    exams_to_perform: [],
+                    checkup_date: '' 
+                  });
                   setSelectedBattery(null);
                 }}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
