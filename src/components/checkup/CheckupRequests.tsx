@@ -88,11 +88,23 @@ export function CheckupRequests() {
     setLoading(true);
 
     try {
-      const submitData = {
-        ...formData,
+      // Preparar dados para envio
+      const submitData: any = {
+        patient_name: formData.patient_name,
+        birth_date: formData.birth_date,
+        battery_id: formData.battery_id,
+        requesting_company: formData.requesting_company,
+        exams_to_perform: formData.exams_to_perform,
         checkup_date: formData.checkup_date || null,
-        doctor_id: formData.doctor_id || null,
+        status: 'solicitado'
       };
+
+      // Só adicionar doctor_id se não estiver vazio
+      if (formData.doctor_id) {
+        submitData.doctor_id = formData.doctor_id;
+      }
+
+      console.log('Enviando dados:', submitData);
 
       const { error } = await supabase
         .from('checkup_requests')
@@ -113,9 +125,9 @@ export function CheckupRequests() {
       setSelectedBattery(null);
       await loadCheckupRequests();
       alert('Solicitação de check-up criada com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating checkup request:', error);
-      alert('Erro ao criar solicitação');
+      alert(`Erro ao criar solicitação: ${error.message}`);
     } finally {
       setLoading(false);
     }
