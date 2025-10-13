@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Eye, Calendar } from 'lucide-react';
+import { Plus, Eye, Calendar, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import jsPDF from 'jspdf';
 
 export function CheckupRequests() {
   const [checkupRequests, setCheckupRequests] = useState<any[]>([]);
   const [batteries, setBatteries] = useState<any[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [selectedBattery, setSelectedBattery] = useState<any>(null);
@@ -15,12 +17,28 @@ export function CheckupRequests() {
     requesting_company: '',
     exams_to_perform: [] as string[],
     checkup_date: '',
+    doctor_id: '',
   });
 
   useEffect(() => {
     loadCheckupRequests();
     loadBatteries();
+    loadDoctors();
   }, []);
+
+  const loadDoctors = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('checkup_doctors')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setDoctors(data || []);
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+    }
+  };
 
   const loadBatteries = async () => {
     try {
@@ -43,7 +61,8 @@ export function CheckupRequests() {
         .select(`
           *,
           batteries(name),
-          units(name)
+          units(name),
+          checkup_doctors(name, crm)
         `)
         .order('created_at', { ascending: false });
 
@@ -72,6 +91,7 @@ export function CheckupRequests() {
       const submitData = {
         ...formData,
         checkup_date: formData.checkup_date || null,
+        doctor_id: formData.doctor_id || null,
       };
 
       const { error } = await supabase
@@ -88,6 +108,7 @@ export function CheckupRequests() {
         requesting_company: '',
         exams_to_perform: [],
         checkup_date: '',
+        doctor_id: '',
       });
       setSelectedBattery(null);
       await loadCheckupRequests();
@@ -98,6 +119,71 @@ export function CheckupRequests() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const generatePDF = (request: any) => {
+    const doc = new jsPDF();
+    
+    // Cabeçalho
+    doc.setFillColor(41, 128, 185);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
+
+    // Informações do paciente
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16);
+    doc.text('DADOS DO PACIENTE', 20, 45);
+    
+    doc.setFontSize(12);
+    doc.text(`Nome: ${request.patient_name}`, 20, 60);
+    doc.text(`Data de Nascimento: ${new Date(request.birth_date).toLocaleDateString('pt-BR')}`, 20, 70);
+    
+    // Informações da solicitação
+    doc.setFontSize(16);
+    doc.text('DADOS DA SOLICITAÇÃO', 20, 90);
+    
+    doc.setFontSize(12);
+    doc.text(`Empresa Solicitante: ${request.requesting_company}`, 20, 105);
+    doc.text(`Bateria de Exames: ${request.batteries?.name || 'N/A'}`, 20, 115);
+    
+    if (request.checkup_doctors) {
+      doc.text(`Médico Responsável: ${request.checkup_doctors.name} - CRM: ${request.checkup_doctors.crm}`, 20, 125);
+    }
+    
+    if (request.checkup_date) {
+      doc.text(`Data do Checkup: ${new Date(request.checkup_date).toLocaleDateString('pt-BR')}`, 20, 135);
+    }
+    
+    doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
+    doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 155);
+
+    // Exames solicitados
+    doc.setFontSize(16);
+    doc.text('EXAMES SOLICITADOS', 20, 175);
+    
+    doc.setFontSize(10);
+    let yPosition = 190;
+    request.exams_to_perform.forEach((exam: string, index: number) => {
+      if (yPosition > 270) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.text(`${index + 1}. ${exam}`, 25, yPosition);
+      yPosition += 7;
+    });
+
+    // Rodapé
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Documento emitido em: ${new Date().toLocaleString('pt-BR')}`, 20, 285);
+    doc.text(`ID da Solicitação: ${request.id}`, 150, 285);
+
+    // Salvar PDF
+    doc.save(`checkup-${request.patient_name}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const getStatusColor = (status: string) => {
@@ -169,6 +255,21 @@ export function CheckupRequests() {
                   onChange={(e) => setFormData({ ...formData, requesting_company: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Médico Responsável</label>
+                <select
+                  value={formData.doctor_id}
+                  onChange={(e) => setFormData({ ...formData, doctor_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Selecione um médico</option>
+                  {doctors.map((doctor) => (
+                    <option key={doctor.id} value={doctor.id}>
+                      {doctor.name} - CRM: {doctor.crm}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Data do Checkup</label>
@@ -251,7 +352,8 @@ export function CheckupRequests() {
                     battery_id: '', 
                     requesting_company: '', 
                     exams_to_perform: [],
-                    checkup_date: '' 
+                    checkup_date: '',
+                    doctor_id: '' 
                   });
                   setSelectedBattery(null);
                 }}
@@ -264,7 +366,7 @@ export function CheckupRequests() {
         </div>
       )}
 
-      {/* TABELA DE SOLICITAÇÕES (CORRIGIDA) */}
+      {/* TABELA DE SOLICITAÇÕES */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -279,10 +381,13 @@ export function CheckupRequests() {
                   Paciente
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Nascimento
+                  Data Nasc.
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Empresa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Médico
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Bateria
@@ -295,6 +400,9 @@ export function CheckupRequests() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Criado em
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
                 </th>
               </tr>
             </thead>
@@ -309,6 +417,12 @@ export function CheckupRequests() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {request.requesting_company}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {request.checkup_doctors ? 
+                      `${request.checkup_doctors.name} (${request.checkup_doctors.crm})` : 
+                      'Não informado'
+                    }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {request.batteries?.name || 'N/A'}
@@ -331,6 +445,16 @@ export function CheckupRequests() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(request.created_at).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => generatePDF(request)}
+                      className="flex items-center space-x-1 text-blue-600 hover:text-blue-900 transition-colors"
+                      title="Gerar PDF"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>PDF</span>
+                    </button>
                   </td>
                 </tr>
               ))}
