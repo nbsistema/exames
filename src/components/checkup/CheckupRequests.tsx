@@ -133,26 +133,31 @@ export function CheckupRequests() {
     }
   };
 
-  const generatePDF = (request: any) => {
-    const doc = new jsPDF();
-    
-    // Cabeçalho
-    doc.setFillColor(41, 128, 185);
-    doc.rect(0, 0, 210, 30, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
-    doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
-    doc.setFontSize(10);
-    doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
+ const generatePDF = (request: any) => {
+  const doc = new jsPDF();
+  
+  // Cabeçalho
+  doc.setFillColor(41, 128, 185);
+  doc.rect(0, 0, 210, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
+  doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
+  doc.setFontSize(10);
+  doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
 
-    // Informações do paciente
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('DADOS DO PACIENTE', 20, 45);
-    
-    doc.setFontSize(12);
-    doc.text(`Nome: ${request.patient_name}`, 20, 60);
-    doc.text(`Data de Nascimento: ${new Date(request.birth_date).toLocaleDateString('pt-BR')}`, 20, 70);
+  // Informações do paciente
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(16);
+  doc.text('DADOS DO PACIENTE', 20, 45);
+  
+  doc.setFontSize(12);
+  doc.text(`Nome: ${request.patient_name}`, 20, 60);
+  
+  // Data de nascimento corrigida
+  const birthDate = request.birth_date ? 
+    new Date(request.birth_date + 'T00:00:00').toLocaleDateString('pt-BR') : 
+    'N/A';
+  doc.text(`Data de Nascimento: ${birthDate}`, 20, 70);
     
     // Informações da solicitação
     doc.setFontSize(16);
@@ -167,8 +172,11 @@ export function CheckupRequests() {
     }
     
     if (request.checkup_date) {
-      doc.text(`Data do Checkup: ${new Date(request.checkup_date).toLocaleDateString('pt-BR')}`, 20, 135);
-    }
+    // Data do checkup corrigida
+    const checkupDate = new Date(request.checkup_date + 'T00:00:00').toLocaleDateString('pt-BR');
+     doc.text(`Data do Checkup: ${checkupDate}`, 20, 135);
+  }
+  
     
     doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
     doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 155);
@@ -378,102 +386,105 @@ export function CheckupRequests() {
         </div>
       )}
 
-      {/* TABELA DE SOLICITAÇÕES */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Histórico de Solicitações ({checkupRequests.length})
-          </h3>
+    {/* TABELA DE SOLICITAÇÕES */}
+<div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <div className="px-6 py-4 border-b border-gray-200">
+    <h3 className="text-lg font-semibold text-gray-900">
+      Histórico de Solicitações ({checkupRequests.length})
+    </h3>
+  </div>
+  <div className="overflow-x-auto">
+    <table className="min-w-full divide-y divide-gray-200">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Paciente
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Data Nasc.
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Empresa
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Médico
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Bateria
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Data Checkup
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Status
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Criado em
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Ações
+          </th>
+        </tr>
+      </thead>
+     <tbody className="bg-white divide-y divide-gray-200">
+  {checkupRequests.map((request) => (
+    <tr key={request.id} className="hover:bg-gray-50">
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+        {request.patient_name}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {/* Data de Nascimento - Corrigida */}
+        {new Date(request.birth_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {request.requesting_company}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {request.checkup_doctors ? 
+          `${request.checkup_doctors.name} (${request.checkup_doctors.crm})` : 
+          'Não informado'
+        }
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {request.batteries?.name || 'N/A'}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        <div className="flex items-center gap-2">
+          {request.checkup_date ? (
+            <span className="text-green-600 font-medium">
+              {/* Data do Checkup - Corrigida */}
+              {new Date(request.checkup_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+            </span>
+          ) : (
+            <span className="text-gray-400">Não agendado</span>
+          )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Paciente
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Nasc.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Empresa
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Médico
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bateria
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Checkup
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Criado em
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ações
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {checkupRequests.map((request) => (
-                <tr key={request.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {request.patient_name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(request.birth_date).toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {request.requesting_company}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {request.checkup_doctors ? 
-                      `${request.checkup_doctors.name} (${request.checkup_doctors.crm})` : 
-                      'Não informado'
-                    }
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {request.batteries?.name || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex items-center gap-2">
-                      {request.checkup_date ? (
-                        <span className="text-green-600 font-medium">
-                          {new Date(request.checkup_date).toLocaleDateString('pt-BR')}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">Não agendado</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
-                      {statusLabels[request.status as keyof typeof statusLabels]}
-                    </span>
-                  </td>
-                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  {new Date(request.created_at).toLocaleDateString('pt-BR')} {/* ← POR ISTO */}
-</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => generatePDF(request)}
-                      className="flex items-center space-x-1 text-blue-600 hover:text-blue-900 transition-colors"
-                      title="Gerar PDF"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>PDF</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
+          {statusLabels[request.status as keyof typeof statusLabels]}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {/* Data de criação - mantém como estava pois é datetime */}
+        {new Date(request.created_at).toLocaleDateString('pt-BR')}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <button
+          onClick={() => generatePDF(request)}
+          className="flex items-center space-x-1 text-blue-600 hover:text-blue-900 transition-colors"
+          title="Gerar PDF"
+        >
+          <Download className="w-4 h-4" />
+          <span>PDF</span>
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
+    </table>
+  </div>
+</div>
     </div>
   );
 }
