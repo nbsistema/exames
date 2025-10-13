@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download, Calendar } from 'lucide-react';
+import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download, Calendar, FileText } from 'lucide-react';
 import { supabase, Unit } from '../../lib/supabase';
+import jsPDF from 'jspdf';
 
 export function CheckupTracking() {
   const [checkupRequests, setCheckupRequests] = useState<any[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState<any>(null);
@@ -48,23 +50,27 @@ export function CheckupTracking() {
     if (showLoader) setLoading(true);
     
     try {
-      const [checkupsRes, unitsRes] = await Promise.all([
+      const [checkupsRes, unitsRes, doctorsRes] = await Promise.all([
         supabase
           .from('checkup_requests')
           .select(`
             *,
             batteries(name),
-            units(name)
+            units(name),
+            checkup_doctors(name, crm)
           `)
           .order('created_at', { ascending: false }),
         supabase.from('units').select('*').order('name'),
+        supabase.from('checkup_doctors').select('*').order('name'),
       ]);
 
       if (checkupsRes.error) throw checkupsRes.error;
       if (unitsRes.error) throw unitsRes.error;
+      if (doctorsRes.error) throw doctorsRes.error;
 
       setCheckupRequests(checkupsRes.data || []);
       setUnits(unitsRes.data || []);
+      setDoctors(doctorsRes.data || []);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error loading data:', error);
@@ -77,6 +83,87 @@ export function CheckupTracking() {
     setRefreshing(true);
     await loadData(false);
     setRefreshing(false);
+  };
+
+  // 🔥 NOVO: Função para gerar PDF
+  const generatePDF = (request: any) => {
+    const doc = new jsPDF();
+    
+    // Cabeçalho
+    doc.setFillColor(41, 128, 185);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
+
+    // Informações do paciente
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16);
+    doc.text('DADOS DO PACIENTE', 20, 45);
+    
+    doc.setFontSize(12);
+    doc.text(`Nome: ${request.patient_name}`, 20, 60);
+    doc.text(`Data de Nascimento: ${new Date(request.birth_date).toLocaleDateString('pt-BR')}`, 20, 70);
+    
+    // Informações da solicitação
+    doc.setFontSize(16);
+    doc.text('DADOS DA SOLICITAÇÃO', 20, 90);
+    
+    doc.setFontSize(12);
+    doc.text(`Empresa Solicitante: ${request.requesting_company}`, 20, 105);
+    doc.text(`Bateria de Exames: ${request.batteries?.name || 'N/A'}`, 20, 115);
+    
+    if (request.checkup_doctors) {
+      doc.text(`Médico Responsável: ${request.checkup_doctors.name} - CRM: ${request.checkup_doctors.crm}`, 20, 125);
+    }
+    
+    if (request.checkup_date) {
+      doc.text(`Data do Checkup: ${new Date(request.checkup_date).toLocaleDateString('pt-BR')}`, 20, 135);
+    }
+    
+    doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
+    doc.text(`Unidade: ${request.units?.name || 'Não definida'}`, 20, 155);
+    doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 165);
+
+    // Exames solicitados
+    doc.setFontSize(16);
+    doc.text('EXAMES SOLICITADOS', 20, 185);
+    
+    doc.setFontSize(10);
+    let yPosition = 200;
+    request.exams_to_perform.forEach((exam: string, index: number) => {
+      if (yPosition > 270) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.text(`${index + 1}. ${exam}`, 25, yPosition);
+      yPosition += 7;
+    });
+
+    // Observações
+    if (request.observations) {
+      if (yPosition > 250) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.setFontSize(16);
+      doc.text('OBSERVAÇÕES', 20, yPosition);
+      yPosition += 10;
+      doc.setFontSize(10);
+      const observationsLines = doc.splitTextToSize(request.observations, 170);
+      doc.text(observationsLines, 20, yPosition);
+    }
+
+    // Rodapé
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Documento emitido em: ${new Date().toLocaleString('pt-BR')}`, 20, 285);
+    doc.text(`ID da Solicitação: ${request.id}`, 150, 285);
+
+    // Salvar PDF
+    doc.save(`checkup-${request.patient_name}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const handleForwardToUnit = async () => {
@@ -107,14 +194,12 @@ export function CheckupTracking() {
     }
   };
 
-  // 🔥 NOVO: Função para abrir modal de data do checkup
   const openDateModal = (checkup: any) => {
     setSelectedCheckup(checkup);
     setCheckupDate(checkup.checkup_date || '');
     setShowDateModal(true);
   };
 
-  // 🔥 NOVO: Função para salvar data do checkup
   const saveCheckupDate = async () => {
     if (!selectedCheckup) return;
 
@@ -212,25 +297,28 @@ export function CheckupTracking() {
   const getStatusActions = (checkup: any) => {
     const actions = [];
     
-    // Recepção pode marcar como executado ou laudos prontos
-    if (userProfile === 'recepcao' && checkup.status === 'encaminhado') {
-      actions.push(
-        {
+    // 🔥 CORREÇÃO: Ações separadas por status atual
+    if (userProfile === 'recepcao') {
+      if (checkup.status === 'encaminhado') {
+        // Quando está encaminhado, só mostra "Marcar Executado"
+        actions.push({
           label: 'Marcar Executado',
           status: 'executado',
           icon: <CheckCircle className="w-4 h-4" />,
           color: 'green'
-        },
-        {
+        });
+      } else if (checkup.status === 'executado') {
+        // Quando está executado, só mostra "Laudos Prontos"
+        actions.push({
           label: 'Laudos Prontos',
           status: 'laudos_prontos',
           icon: <Bell className="w-4 h-4" />,
           color: 'purple'
-        }
-      );
+        });
+      }
     }
     
-    // Checkup pode buscar laudos quando estão prontos
+    // Ação específica para perfil checkup
     if (userProfile === 'checkup' && checkup.status === 'laudos_prontos') {
       actions.push({
         label: 'Buscar Laudos',
@@ -346,7 +434,6 @@ export function CheckupTracking() {
         </div>
       )}
 
-      {/* 🔥 NOVO: Modal para definir data do checkup */}
       {showDateModal && selectedCheckup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full">
@@ -431,6 +518,9 @@ export function CheckupTracking() {
                     Empresa Solicitante
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Médico
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Bateria
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -467,6 +557,12 @@ export function CheckupTracking() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {checkup.requesting_company}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.checkup_doctors ? 
+                          `${checkup.checkup_doctors.name} (${checkup.checkup_doctors.crm})` : 
+                          'Não informado'
+                        }
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {checkup.batteries?.name || 'N/A'}
@@ -515,6 +611,15 @@ export function CheckupTracking() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-wrap gap-2">
+                          {/* 🔥 NOVO: Botão para gerar PDF */}
+                          <button
+                            onClick={() => generatePDF(checkup)}
+                            className="text-blue-600 hover:text-blue-800 transition-colors"
+                            title="Gerar PDF da Solicitação"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+
                           {/* Ação de encaminhar para unidade */}
                           {checkup.status === 'solicitado' && userProfile === 'recepcao' && (
                             <button
@@ -529,7 +634,7 @@ export function CheckupTracking() {
                             </button>
                           )}
 
-                          {/* Ações de status */}
+                          {/* 🔥 CORREÇÃO: Ações de status agora são exibidas corretamente */}
                           {statusActions.map((action, index) => (
                             <button
                               key={index}
@@ -538,6 +643,7 @@ export function CheckupTracking() {
                               title={action.label}
                             >
                               {action.icon}
+                              <span className="hidden sm:inline">{action.label}</span>
                             </button>
                           ))}
 
