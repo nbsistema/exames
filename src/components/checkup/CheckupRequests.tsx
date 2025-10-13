@@ -455,9 +455,9 @@ export function CheckupRequests() {
                       {statusLabels[request.status as keyof typeof statusLabels]}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(request.created_at).toLocaleDateString('pt-BR')}
-                  </td>
+                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  {new Date(request.created_at).toLocaleDateString('pt-BR')} {/* ← POR ISTO */}
+</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
                       onClick={() => generatePDF(request)}
