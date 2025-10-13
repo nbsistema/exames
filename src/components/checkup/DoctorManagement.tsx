@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase'; // Importe o supabase
 
 interface CheckupDoctor {
   id: string;
@@ -20,7 +21,7 @@ export function DoctorManagement() {
   const [editingDoctor, setEditingDoctor] = useState<CheckupDoctor | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Carregar médicos do checkup
+  // Carregar médicos do checkup CORRIGIDO
   useEffect(() => {
     loadDoctors();
   }, []);
@@ -28,10 +29,14 @@ export function DoctorManagement() {
   const loadDoctors = async () => {
     setLoading(true);
     try {
-      // Chamada para a nova tabela checkup_doctors
-      const response = await fetch('/api/checkup-doctors');
-      const data = await response.json();
-      setDoctors(data);
+      // 🔥 CORREÇÃO: Chamada direta para o Supabase
+      const { data, error } = await supabase
+        .from('checkup_doctors')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setDoctors(data || []);
     } catch (error) {
       console.error('Erro ao carregar médicos do checkup:', error);
     } finally {
@@ -50,32 +55,41 @@ export function DoctorManagement() {
     setLoading(true);
     try {
       if (editingDoctor) {
-        // Atualizar médico existente na nova tabela
-        await fetch(`/api/checkup-doctors/${editingDoctor.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // 🔥 CORREÇÃO: Atualizar médico existente direto no Supabase
+        const { error } = await supabase
+          .from('checkup_doctors')
+          .update({
             name: formData.name.trim(),
-            crm: formData.crm.trim()
+            crm: formData.crm.trim(),
+            updated_at: new Date().toISOString()
           })
-        });
+          .eq('id', editingDoctor.id);
+
+        if (error) throw error;
       } else {
-        // Criar novo médico na nova tabela
-        await fetch('/api/checkup-doctors', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // 🔥 CORREÇÃO: Criar novo médico direto no Supabase
+        const { error } = await supabase
+          .from('checkup_doctors')
+          .insert([{
             name: formData.name.trim(),
             crm: formData.crm.trim()
-          })
-        });
+          }]);
+
+        if (error) throw error;
       }
 
       loadDoctors();
       resetForm();
-    } catch (error) {
+      alert(editingDoctor ? 'Médico atualizado com sucesso!' : 'Médico cadastrado com sucesso!');
+    } catch (error: any) {
       console.error('Erro ao salvar médico:', error);
-      alert('Erro ao salvar médico. Verifique se o CRM já existe.');
+      
+      // Tratamento de erro mais específico
+      if (error.code === '23505') {
+        alert('Erro: CRM já está cadastrado no sistema.');
+      } else {
+        alert('Erro ao salvar médico. Tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -94,8 +108,16 @@ export function DoctorManagement() {
     if (confirm('Tem certeza que deseja excluir este médico?')) {
       setLoading(true);
       try {
-        await fetch(`/api/checkup-doctors/${id}`, { method: 'DELETE' });
+        // 🔥 CORREÇÃO: Excluir médico direto no Supabase
+        const { error } = await supabase
+          .from('checkup_doctors')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+
         loadDoctors();
+        alert('Médico excluído com sucesso!');
       } catch (error) {
         console.error('Erro ao excluir médico:', error);
         alert('Erro ao excluir médico.');
@@ -204,7 +226,7 @@ export function DoctorManagement() {
       {/* Lista de médicos */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {loading && doctors.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">Carregando...</div>
+          <div className="text-center py-8 text-gray-500">Carregando médicos...</div>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -242,6 +264,7 @@ export function DoctorManagement() {
                           onClick={() => handleEdit(doctor)}
                           disabled={loading}
                           className="text-blue-600 hover:text-blue-900 transition-colors disabled:opacity-50"
+                          title="Editar médico"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
@@ -249,6 +272,7 @@ export function DoctorManagement() {
                           onClick={() => handleDelete(doctor.id)}
                           disabled={loading}
                           className="text-red-600 hover:text-red-900 transition-colors disabled:opacity-50"
+                          title="Excluir médico"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -261,7 +285,7 @@ export function DoctorManagement() {
             
             {filteredDoctors.length === 0 && !loading && (
               <div className="text-center py-8 text-gray-500">
-                Nenhum médico cadastrado
+                {doctors.length === 0 ? 'Nenhum médico cadastrado' : 'Nenhum médico encontrado'}
               </div>
             )}
           </>
