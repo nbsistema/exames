@@ -1,22 +1,26 @@
 import React, { useState } from 'react';
-import { Building2, Clipboard, Users, Activity, BarChart3 } from 'lucide-react';
+import { Building2, Clipboard, Users, Activity, BarChart3, UserPlus } from 'lucide-react'; // Adicione UserPlus
 import { BatteryManagement } from './BatteryManagement';
 import { CheckupRequests } from './CheckupRequests';
 import { CheckupTracking } from './CheckupTracking';
 import { CheckupOverview } from './CheckupOverview';
-import { CheckupReports } from './CheckupReports'; // Importe o novo componente
+import { CheckupReports } from './CheckupReports';
+import { DoctorManagement } from './DoctorManagement'; // Importe o novo componente
 
-type CheckupTab = 'overview' | 'batteries' | 'requests' | 'tracking' | 'reports';
+// Adicione 'doctors' no tipo CheckupTab
+type CheckupTab = 'overview' | 'batteries' | 'requests' | 'tracking' | 'reports' | 'doctors';
 
 export function CheckupDashboard() {
   const [activeTab, setActiveTab] = useState<CheckupTab>('overview');
 
+  // Adicione a nova aba no array de tabs
   const tabs = [
     { id: 'overview', label: 'Visão Geral', icon: Activity },
     { id: 'batteries', label: 'Baterias', icon: Clipboard },
     { id: 'requests', label: 'Solicitações', icon: Users },
     { id: 'tracking', label: 'Acompanhamento', icon: Building2 },
-    { id: 'reports', label: 'Relatórios', icon: BarChart3 }, // Nova aba
+    { id: 'reports', label: 'Relatórios', icon: BarChart3 },
+    { id: 'doctors', label: 'Médicos', icon: UserPlus }, // Nova aba
   ];
 
   const renderTabContent = () => {
@@ -30,12 +34,15 @@ export function CheckupDashboard() {
       case 'tracking':
         return <CheckupTracking />;
       case 'reports':
-        return <CheckupReports />; // Novo caso
+        return <CheckupReports />;
+      case 'doctors':
+        return <DoctorManagement />; // Adicione este caso
       default:
         return <CheckupOverview />;
     }
   };
 
+  // O restante do componente permanece igual...
   return (
     <div className="p-6">
       <div className="mb-8">
