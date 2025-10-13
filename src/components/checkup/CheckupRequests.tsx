@@ -26,6 +26,11 @@ export function CheckupRequests() {
     loadDoctors();
   }, []);
 
+const formatDateSimple = (dateString: string) => {
+  if (!dateString) return 'N/A';
+  return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR');
+};
+  
   const loadDoctors = async () => {
     try {
       const { data, error } = await supabase
