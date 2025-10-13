@@ -19,11 +19,11 @@ export function CheckupTracking() {
   const [checkupDate, setCheckupDate] = useState('');
 
   // Função para formatar datas sem problemas de fuso horário
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'N/A';
-  // Adiciona 'T00:00:00' para forçar interpretação no fuso horário local
-  return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR');
-};
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    // Adiciona 'T00:00:00' para forçar interpretação no fuso horário local
+    return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR');
+  };
   
   useEffect(() => {
     loadUserProfile();
@@ -92,62 +92,51 @@ const formatDate = (dateString: string) => {
     setRefreshing(false);
   };
 
- 
-          {/* ... resto do código das ações ... */}
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-3. Corrija também a função generatePDF
-Atualize a função generatePDF para usar a mesma correção:
+  const generatePDF = (request: any) => {
+    const doc = new jsPDF();
+    
+    // Cabeçalho
+    doc.setFillColor(41, 128, 185);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
 
-jsx
-const generatePDF = (request: any) => {
-  const doc = new jsPDF();
-  
-  // Cabeçalho
-  doc.setFillColor(41, 128, 185);
-  doc.rect(0, 0, 210, 30, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.text('SOLICITAÇÃO DE CHECK-UP', 105, 15, { align: 'center' });
-  doc.setFontSize(10);
-  doc.text('Documento Emitido em: ' + new Date().toLocaleDateString('pt-BR'), 105, 25, { align: 'center' });
-
-  // Informações do paciente
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(16);
-  doc.text('DADOS DO PACIENTE', 20, 45);
-  
-  doc.setFontSize(12);
-  doc.text(`Nome: ${request.patient_name}`, 20, 60);
-  
-  // Data de nascimento corrigida
-  doc.text(`Data de Nascimento: ${formatDate(request.birth_date)}`, 20, 70);
-  
-  // Informações da solicitação
-  doc.setFontSize(16);
-  doc.text('DADOS DA SOLICITAÇÃO', 20, 90);
-  
-  doc.setFontSize(12);
-  doc.text(`Empresa Solicitante: ${request.requesting_company}`, 20, 105);
-  doc.text(`Bateria de Exames: ${request.batteries?.name || 'N/A'}`, 20, 115);
-  
-  if (request.checkup_doctors) {
-    doc.text(`Médico Responsável: ${request.checkup_doctors.name} - CRM: ${request.checkup_doctors.crm}`, 20, 125);
-  }
-  
-  if (request.checkup_date) {
-    // Data do checkup corrigida
-    doc.text(`Data do Checkup: ${formatDate(request.checkup_date)}`, 20, 135);
-  }
-  
-  doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
-  doc.text(`Unidade: ${request.units?.name || 'Não definida'}`, 20, 155);
-  
-  // Data de criação - mantém datetime pois inclui hora
-  doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 165);
+    // Informações do paciente
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16);
+    doc.text('DADOS DO PACIENTE', 20, 45);
+    
+    doc.setFontSize(12);
+    doc.text(`Nome: ${request.patient_name}`, 20, 60);
+    
+    // Data de nascimento corrigida
+    doc.text(`Data de Nascimento: ${formatDate(request.birth_date)}`, 20, 70);
+    
+    // Informações da solicitação
+    doc.setFontSize(16);
+    doc.text('DADOS DA SOLICITAÇÃO', 20, 90);
+    
+    doc.setFontSize(12);
+    doc.text(`Empresa Solicitante: ${request.requesting_company}`, 20, 105);
+    doc.text(`Bateria de Exames: ${request.batteries?.name || 'N/A'}`, 20, 115);
+    
+    if (request.checkup_doctors) {
+      doc.text(`Médico Responsável: ${request.checkup_doctors.name} - CRM: ${request.checkup_doctors.crm}`, 20, 125);
+    }
+    
+    if (request.checkup_date) {
+      // Data do checkup corrigida
+      doc.text(`Data do Checkup: ${formatDate(request.checkup_date)}`, 20, 135);
+    }
+    
+    doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
+    doc.text(`Unidade: ${request.units?.name || 'Não definida'}`, 20, 155);
+    
+    // Data de criação - mantém datetime pois inclui hora
+    doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 165);
 
     // Exames solicitados
     doc.setFontSize(16);
@@ -566,76 +555,76 @@ const generatePDF = (request: any) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-  {checkupRequests.map((checkup) => {
-    const statusActions = getStatusActions(checkup);
-    
-    return (
-      <tr key={checkup.id} className="hover:bg-gray-50">
-        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-          {checkup.patient_name}
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {/* Data de Nascimento - Corrigida */}
-          {formatDate(checkup.birth_date)}
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {checkup.requesting_company}
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {checkup.checkup_doctors ? 
-            `${checkup.checkup_doctors.name} (${checkup.checkup_doctors.crm})` : 
-            'Não informado'
-          }
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {checkup.batteries?.name || 'N/A'}
-        </td>
-        <td className="px-4 py-4 text-sm text-gray-500">
-          <div className="max-w-xs">
-            {checkup.exams_to_perform?.slice(0, 2).join(', ')}
-            {checkup.exams_to_perform?.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
-          </div>
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          <div className="flex items-center gap-2">
-            {checkup.checkup_date ? (
-              <span className="text-green-600 font-medium">
-                {/* Data do Checkup - Corrigida */}
-                {formatDate(checkup.checkup_date)}
-              </span>
-            ) : (
-              <span className="text-gray-400">Não agendado</span>
-            )}
-            <button
-              onClick={() => openDateModal(checkup)}
-              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-              title="Definir data do checkup"
-            >
-              <Calendar className="w-4 h-4" />
-            </button>
-          </div>
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap">
-          <div className="flex flex-col space-y-1">
-            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
-              {statusLabels[checkup.status as keyof typeof statusLabels]}
-            </span>
-            {checkup.laudos_prontos_at && (
-              <div className="text-xs text-gray-500">
-                {/* Data de laudos - mantém datetime pois inclui hora */}
-                Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
-              </div>
-            )}
-          </div>
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {checkup.units?.name || 'Não encaminhado'}
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-          {/* Data de criação - mantém datetime pois inclui hora */}
-          {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-        </td>
-        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                {checkupRequests.map((checkup) => {
+                  const statusActions = getStatusActions(checkup);
+                  
+                  return (
+                    <tr key={checkup.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {checkup.patient_name}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {/* Data de Nascimento - Corrigida */}
+                        {formatDate(checkup.birth_date)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.requesting_company}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.checkup_doctors ? 
+                          `${checkup.checkup_doctors.name} (${checkup.checkup_doctors.crm})` : 
+                          'Não informado'
+                        }
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.batteries?.name || 'N/A'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500">
+                        <div className="max-w-xs">
+                          {checkup.exams_to_perform?.slice(0, 2).join(', ')}
+                          {checkup.exams_to_perform?.length > 2 && ` +${checkup.exams_to_perform.length - 2} mais`}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex items-center gap-2">
+                          {checkup.checkup_date ? (
+                            <span className="text-green-600 font-medium">
+                              {/* Data do Checkup - Corrigida */}
+                              {formatDate(checkup.checkup_date)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">Não agendado</span>
+                          )}
+                          <button
+                            onClick={() => openDateModal(checkup)}
+                            className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                            title="Definir data do checkup"
+                          >
+                            <Calendar className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-1">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
+                            {statusLabels[checkup.status as keyof typeof statusLabels]}
+                          </span>
+                          {checkup.laudos_prontos_at && (
+                            <div className="text-xs text-gray-500">
+                              {/* Data de laudos - mantém datetime pois inclui hora */}
+                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.units?.name || 'Não encaminhado'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {/* Data de criação - mantém datetime pois inclui hora */}
+                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-wrap gap-2">
                           {/* Botão para gerar PDF */}
                           <button
