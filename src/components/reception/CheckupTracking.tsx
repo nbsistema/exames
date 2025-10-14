@@ -18,6 +18,13 @@ export function CheckupTracking() {
   const [showDateModal, setShowDateModal] = useState(false);
   const [checkupDate, setCheckupDate] = useState('');
 
+  // 🔥 CORREÇÃO: Função para formatar datas sem problemas de fuso horário
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    // Adiciona 'T00:00:00' para forçar interpretação no fuso horário local
+    return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR');
+  };
+  
   useEffect(() => {
     loadUserProfile();
     loadData();
@@ -85,7 +92,7 @@ export function CheckupTracking() {
     setRefreshing(false);
   };
 
-  // 🔥 NOVO: Função para gerar PDF
+  // 🔥 CORREÇÃO: Função generatePDF com datas corrigidas
   const generatePDF = (request: any) => {
     const doc = new jsPDF();
     
@@ -105,7 +112,9 @@ export function CheckupTracking() {
     
     doc.setFontSize(12);
     doc.text(`Nome: ${request.patient_name}`, 20, 60);
-    doc.text(`Data de Nascimento: ${new Date(request.birth_date).toLocaleDateString('pt-BR')}`, 20, 70);
+    
+    // 🔥 CORREÇÃO: Data de nascimento corrigida
+    doc.text(`Data de Nascimento: ${formatDate(request.birth_date)}`, 20, 70);
     
     // Informações da solicitação
     doc.setFontSize(16);
@@ -120,11 +129,14 @@ export function CheckupTracking() {
     }
     
     if (request.checkup_date) {
-      doc.text(`Data do Checkup: ${new Date(request.checkup_date).toLocaleDateString('pt-BR')}`, 20, 135);
+      // 🔥 CORREÇÃO: Data do checkup corrigida
+      doc.text(`Data do Checkup: ${formatDate(request.checkup_date)}`, 20, 135);
     }
     
     doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
     doc.text(`Unidade: ${request.units?.name || 'Não definida'}`, 20, 155);
+    
+    // Data de criação - mantém datetime pois inclui hora
     doc.text(`Data da Solicitação: ${new Date(request.created_at).toLocaleDateString('pt-BR')}`, 20, 165);
 
     // Exames solicitados
@@ -297,7 +309,7 @@ export function CheckupTracking() {
   const getStatusActions = (checkup: any) => {
     const actions = [];
     
-    // 🔥 CORREÇÃO: Ações separadas por status atual
+    // Ações separadas por status atual
     if (userProfile === 'recepcao') {
       if (checkup.status === 'encaminhado') {
         // Quando está encaminhado, só mostra "Marcar Executado"
@@ -553,7 +565,8 @@ export function CheckupTracking() {
                         {checkup.patient_name}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(checkup.birth_date).toLocaleDateString('pt-BR')}
+                        {/* 🔥 CORREÇÃO: Data de nascimento corrigida */}
+                        {formatDate(checkup.birth_date)}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {checkup.requesting_company}
@@ -577,7 +590,8 @@ export function CheckupTracking() {
                         <div className="flex items-center gap-2">
                           {checkup.checkup_date ? (
                             <span className="text-green-600 font-medium">
-                              {new Date(checkup.checkup_date).toLocaleDateString('pt-BR')}
+                              {/* 🔥 CORREÇÃO: Data do checkup corrigida */}
+                              {formatDate(checkup.checkup_date)}
                             </span>
                           ) : (
                             <span className="text-gray-400">Não agendado</span>
@@ -598,6 +612,7 @@ export function CheckupTracking() {
                           </span>
                           {checkup.laudos_prontos_at && (
                             <div className="text-xs text-gray-500">
+                              {/* Data de laudos - mantém datetime pois inclui hora */}
                               Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
                             </div>
                           )}
@@ -607,11 +622,12 @@ export function CheckupTracking() {
                         {checkup.units?.name || 'Não encaminhado'}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {/* Data de criação - mantém datetime pois inclui hora */}
                         {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-wrap gap-2">
-                          {/* 🔥 NOVO: Botão para gerar PDF */}
+                          {/* Botão para gerar PDF */}
                           <button
                             onClick={() => generatePDF(checkup)}
                             className="text-blue-600 hover:text-blue-800 transition-colors"
@@ -634,7 +650,7 @@ export function CheckupTracking() {
                             </button>
                           )}
 
-                          {/* 🔥 CORREÇÃO: Ações de status agora são exibidas corretamente */}
+                          {/* Ações de status */}
                           {statusActions.map((action, index) => (
                             <button
                               key={index}
