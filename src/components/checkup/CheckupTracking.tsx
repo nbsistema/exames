@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download, Calendar, FileText } from 'lucide-react';
+import { ArrowRight, MessageSquare, RefreshCw, Bell, CheckCircle, Download, Calendar, FileText, Edit } from 'lucide-react';
 import { supabase, Unit } from '../../lib/supabase';
 import jsPDF from 'jspdf';
 
@@ -7,6 +7,7 @@ export function CheckupTracking() {
   const [checkupRequests, setCheckupRequests] = useState<any[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [batteries, setBatteries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCheckup, setSelectedCheckup] = useState<any>(null);
@@ -17,6 +18,17 @@ export function CheckupTracking() {
   const [userProfile, setUserProfile] = useState<string>('');
   const [showDateModal, setShowDateModal] = useState(false);
   const [checkupDate, setCheckupDate] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    patient_name: '',
+    birth_date: '',
+    requesting_company: '',
+    doctor_id: '',
+    battery_id: '',
+    exams_to_perform: [] as string[],
+    checkup_date: ''
+  });
+  const [selectedBattery, setSelectedBattery] = useState<any>(null);
 
   // Função para formatar datas sem problemas de fuso horário
   const formatDate = (dateString: string) => {
@@ -57,7 +69,7 @@ export function CheckupTracking() {
     if (showLoader) setLoading(true);
     
     try {
-      const [checkupsRes, unitsRes, doctorsRes] = await Promise.all([
+      const [checkupsRes, unitsRes, doctorsRes, batteriesRes] = await Promise.all([
         supabase
           .from('checkup_requests')
           .select(`
@@ -69,15 +81,18 @@ export function CheckupTracking() {
           .order('created_at', { ascending: false }),
         supabase.from('units').select('*').order('name'),
         supabase.from('checkup_doctors').select('*').order('name'),
+        supabase.from('batteries').select('*').order('name')
       ]);
 
       if (checkupsRes.error) throw checkupsRes.error;
       if (unitsRes.error) throw unitsRes.error;
       if (doctorsRes.error) throw doctorsRes.error;
+      if (batteriesRes.error) throw batteriesRes.error;
 
       setCheckupRequests(checkupsRes.data || []);
       setUnits(unitsRes.data || []);
       setDoctors(doctorsRes.data || []);
+      setBatteries(batteriesRes.data || []);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error loading data:', error);
@@ -90,6 +105,81 @@ export function CheckupTracking() {
     setRefreshing(true);
     await loadData(false);
     setRefreshing(false);
+  };
+
+  // 🔥 NOVO: Função para abrir modal de edição
+  const openEditModal = (checkup: any) => {
+    setSelectedCheckup(checkup);
+    setEditFormData({
+      patient_name: checkup.patient_name,
+      birth_date: checkup.birth_date,
+      requesting_company: checkup.requesting_company,
+      doctor_id: checkup.doctor_id || '',
+      battery_id: checkup.battery_id || '',
+      exams_to_perform: checkup.exams_to_perform || [],
+      checkup_date: checkup.checkup_date || ''
+    });
+    
+    // Carregar bateria selecionada se houver
+    if (checkup.battery_id) {
+      const battery = batteries.find(b => b.id === checkup.battery_id);
+      setSelectedBattery(battery || null);
+    }
+    
+    setShowEditModal(true);
+  };
+
+  // 🔥 NOVO: Função para lidar com seleção de bateria no formulário de edição
+  const handleBatterySelect = (batteryId: string) => {
+    const battery = batteries.find(b => b.id === batteryId);
+    setSelectedBattery(battery || null);
+    setEditFormData({ 
+      ...editFormData, 
+      battery_id: batteryId,
+      exams_to_perform: battery?.exams || []
+    });
+  };
+
+  // 🔥 NOVO: Função para salvar edição
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCheckup) return;
+
+    try {
+      const { error } = await supabase
+        .from('checkup_requests')
+        .update({
+          patient_name: editFormData.patient_name,
+          birth_date: editFormData.birth_date,
+          requesting_company: editFormData.requesting_company,
+          doctor_id: editFormData.doctor_id || null,
+          battery_id: editFormData.battery_id,
+          exams_to_perform: editFormData.exams_to_perform,
+          checkup_date: editFormData.checkup_date || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedCheckup.id);
+
+      if (error) throw error;
+
+      await loadData(false);
+      setShowEditModal(false);
+      setSelectedCheckup(null);
+      setEditFormData({
+        patient_name: '',
+        birth_date: '',
+        requesting_company: '',
+        doctor_id: '',
+        battery_id: '',
+        exams_to_perform: [],
+        checkup_date: ''
+      });
+      setSelectedBattery(null);
+      alert('Solicitação atualizada com sucesso!');
+    } catch (error) {
+      console.error('Error updating checkup request:', error);
+      alert('Erro ao atualizar solicitação');
+    }
   };
 
   const generatePDF = (request: any) => {
@@ -445,6 +535,164 @@ export function CheckupTracking() {
         </div>
       )}
 
+      {/* 🔥 NOVO: Modal de Edição */}
+      {showEditModal && selectedCheckup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold">
+                Editar Solicitação - {selectedCheckup.patient_name}
+              </h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <MessageSquare className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.patient_name}
+                      onChange={(e) => setEditFormData({ ...editFormData, patient_name: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                    <input
+                      type="date"
+                      required
+                      value={editFormData.birth_date}
+                      onChange={(e) => setEditFormData({ ...editFormData, birth_date: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Empresa Solicitante</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.requesting_company}
+                      onChange={(e) => setEditFormData({ ...editFormData, requesting_company: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Médico Responsável</label>
+                    <select
+                      value={editFormData.doctor_id}
+                      onChange={(e) => setEditFormData({ ...editFormData, doctor_id: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Selecione um médico</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>
+                          {doctor.name} - CRM: {doctor.crm}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data do Checkup</label>
+                    <input
+                      type="date"
+                      value={editFormData.checkup_date}
+                      onChange={(e) => setEditFormData({ ...editFormData, checkup_date: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bateria de Check-up</label>
+                    <select
+                      required
+                      value={editFormData.battery_id}
+                      onChange={(e) => handleBatterySelect(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Selecione uma bateria</option>
+                      {batteries.map((battery) => (
+                        <option key={battery.id} value={battery.id}>
+                          {battery.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {selectedBattery && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Exames a Realizar</label>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 mb-2">Bateria selecionada: <strong>{selectedBattery.name}</strong></p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {selectedBattery.exams.map((exam: string, index: number) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={editFormData.exams_to_perform.includes(exam)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    exams_to_perform: [...editFormData.exams_to_perform, exam]
+                                  });
+                                } else {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    exams_to_perform: editFormData.exams_to_perform.filter(e => e !== exam)
+                                  });
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">{exam}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Salvar Alterações
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setSelectedCheckup(null);
+                      setEditFormData({
+                        patient_name: '',
+                        birth_date: '',
+                        requesting_company: '',
+                        doctor_id: '',
+                        battery_id: '',
+                        exams_to_perform: [],
+                        checkup_date: ''
+                      });
+                      setSelectedBattery(null);
+                    }}
+                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDateModal && selectedCheckup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full">
@@ -607,80 +855,4 @@ export function CheckupTracking() {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex flex-col space-y-1">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
-                            {statusLabels[checkup.status as keyof typeof statusLabels]}
-                          </span>
-                          {checkup.laudos_prontos_at && (
-                            <div className="text-xs text-gray-500">
-                              {/* Data de laudos - mantém datetime pois inclui hora */}
-                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {checkup.units?.name || 'Não encaminhado'}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {/* Data de criação - mantém datetime pois inclui hora */}
-                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex flex-wrap gap-2">
-                          {/* Botão para gerar PDF */}
-                          <button
-                            onClick={() => generatePDF(checkup)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Gerar PDF da Solicitação"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-
-                          {/* Ação de encaminhar para unidade */}
-                          {checkup.status === 'solicitado' && userProfile === 'recepcao' && (
-                            <button
-                              onClick={() => {
-                                setSelectedCheckup(checkup);
-                                setShowForwardForm(true);
-                              }}
-                              className="text-blue-600 hover:text-blue-800 transition-colors"
-                              title="Encaminhar para Unidade"
-                            >
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
-                          )}
-
-                          {/* Ações de status */}
-                          {statusActions.map((action, index) => (
-                            <button
-                              key={index}
-                              onClick={() => updateStatus(checkup.id, action.status)}
-                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
-                              title={action.label}
-                            >
-                              {action.icon}
-                              <span className="hidden sm:inline">{action.label}</span>
-                            </button>
-                          ))}
-
-                          {/* Observações */}
-                          {checkup.observations && (
-                            <button
-                              className="text-gray-600 hover:text-gray-800 transition-colors"
-                              title={`Observações: ${checkup.observations}`}
-                            >
-                              <MessageSquare className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                            {statusLabels[checkup
