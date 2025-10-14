@@ -128,9 +128,11 @@ export function CheckupTracking() {
       doc.text(`Médico Responsável: ${request.checkup_doctors.name} - CRM: ${request.checkup_doctors.crm}`, 20, 125);
     }
     
+    // 🔥 CORREÇÃO MELHORADA: Verificação mais robusta para data do checkup
     if (request.checkup_date) {
-      // 🔥 CORREÇÃO: Data do checkup corrigida
       doc.text(`Data do Checkup: ${formatDate(request.checkup_date)}`, 20, 135);
+    } else {
+      doc.text(`Data do Checkup: Não agendado`, 20, 135);
     }
     
     doc.text(`Status: ${statusLabels[request.status as keyof typeof statusLabels]}`, 20, 145);
@@ -208,7 +210,8 @@ export function CheckupTracking() {
 
   const openDateModal = (checkup: any) => {
     setSelectedCheckup(checkup);
-    setCheckupDate(checkup.checkup_date || '');
+    // 🔥 CORREÇÃO: Garantir que a data seja carregada corretamente
+    setCheckupDate(checkup.checkup_date ? checkup.checkup_date.split('T')[0] : '');
     setShowDateModal(true);
   };
 
@@ -588,9 +591,9 @@ export function CheckupTracking() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex items-center gap-2">
+                          {/* 🔥 CORREÇÃO MELHORADA: Verificação mais robusta */}
                           {checkup.checkup_date ? (
                             <span className="text-green-600 font-medium">
-                              {/* 🔥 CORREÇÃO: Data do checkup corrigida */}
                               {formatDate(checkup.checkup_date)}
                             </span>
                           ) : (
