@@ -855,4 +855,89 @@ export function CheckupTracking() {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex flex-col space-y-1">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(checkup.status)}`}>
-                            {statusLabels[checkup
+                            {statusLabels[checkup.status as keyof typeof statusLabels]}
+                          </span>
+                          {checkup.laudos_prontos_at && (
+                            <div className="text-xs text-gray-500">
+                              {/* Data de laudos - mantém datetime pois inclui hora */}
+                              Laudos: {new Date(checkup.laudos_prontos_at).toLocaleDateString('pt-BR')}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {checkup.units?.name || 'Não encaminhado'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {/* Data de criação - mantém datetime pois inclui hora */}
+                        {new Date(checkup.created_at).toLocaleDateString('pt-BR')} {new Date(checkup.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-2">
+                          {/* 🔥 NOVO: Botão de Edição */}
+                          <button
+                            onClick={() => openEditModal(checkup)}
+                            className="text-green-600 hover:text-green-800 transition-colors"
+                            title="Editar Solicitação"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+
+                          {/* Botão para gerar PDF */}
+                          <button
+                            onClick={() => generatePDF(checkup)}
+                            className="text-blue-600 hover:text-blue-800 transition-colors"
+                            title="Gerar PDF da Solicitação"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+
+                          {/* Ação de encaminhar para unidade */}
+                          {checkup.status === 'solicitado' && userProfile === 'recepcao' && (
+                            <button
+                              onClick={() => {
+                                setSelectedCheckup(checkup);
+                                setShowForwardForm(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              title="Encaminhar para Unidade"
+                            >
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Ações de status */}
+                          {statusActions.map((action, index) => (
+                            <button
+                              key={index}
+                              onClick={() => updateStatus(checkup.id, action.status)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-${action.color}-100 text-${action.color}-800 hover:bg-${action.color}-200 transition-colors`}
+                              title={action.label}
+                            >
+                              {action.icon}
+                              <span className="hidden sm:inline">{action.label}</span>
+                            </button>
+                          ))}
+
+                          {/* Observações */}
+                          {checkup.observations && (
+                            <button
+                              className="text-gray-600 hover:text-gray-800 transition-colors"
+                              title={`Observações: ${checkup.observations}`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
