@@ -56,60 +56,62 @@ export function ExamManagement() {
     });
   };
 
-  useEffect(() => {
-    console.log('🔄 useEffect inicial - user:', user);
-    if (user?.profile === 'parceiro') {
-      loadUserPartner();
-    } else {
-      loadData();
+  // Carregar dados uma única vez com controle de estado
+  const loadAllData = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🚀 Iniciando carregamento de dados...');
+
+      // Se for parceiro, carregar partner primeiro
+      if (user?.profile === 'parceiro') {
+        console.log('🔍 Buscando partner_id do usuário...', user?.id);
+        
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('partner_id, partners!inner(id, name)')
+          .eq('id', user.id)
+          .single();
+
+        if (userError) {
+          console.error('❌ Erro ao buscar partner_id:', userError);
+          setLoading(false);
+          return;
+        }
+
+        console.log('📋 Dados do usuário:', userData);
+
+        if (userData && userData.partner_id) {
+          const partner = {
+            id: userData.partner_id,
+            name: userData.partners?.name || 'Parceiro'
+          };
+          
+          console.log('✅ Partner carregado:', partner);
+          setCurrentPartner(partner);
+          
+          // Carregar todos os dados usando o partner_id
+          await loadData(partner.id);
+        } else {
+          console.error('❌ Usuário parceiro sem partner_id');
+          alert('Erro: Parceiro não vinculado. Contate o administrador.');
+          setLoading(false);
+        }
+      } else {
+        // Se for admin, carregar dados gerais
+        await loadData();
+      }
+    } catch (error) {
+      console.error('Error in loadAllData:', error);
+      setLoading(false);
     }
   }, [user]);
 
-  const loadUserPartner = async () => {
-    try {
-      console.log('🔍 Buscando partner_id do usuário...', user?.id);
-      
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('partner_id, partners!inner(id, name)')
-        .eq('id', user.id)
-        .single();
-
-      if (userError) {
-        console.error('❌ Erro ao buscar partner_id:', userError);
-        return;
-      }
-
-      console.log('📋 Dados do usuário:', userData);
-
-      if (userData && userData.partner_id) {
-        const partner = {
-          id: userData.partner_id,
-          name: userData.partners?.name || 'Parceiro'
-        };
-        
-        console.log('✅ Partner carregado:', partner);
-        setCurrentPartner(partner);
-        setFormData(prev => ({ ...prev, partner_id: userData.partner_id }));
-        
-        await loadData(partner.id);
-      } else {
-        console.error('❌ Usuário parceiro sem partner_id');
-        alert('Erro: Parceiro não vinculado. Contate o administrador.');
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Error loading user partner:', error);
-      setLoading(false);
-    }
-  };
-
+  // Carregar dados principais
   const loadData = useCallback(async (userPartnerId?: string) => {
     try {
-      setLoading(true);
-      console.log('🚀 Iniciando loadData com partnerId:', userPartnerId);
+      console.log('📦 Carregando dados com partnerId:', userPartnerId);
       
-      // Carregar parceiros (apenas admin vê todos)
+      // Se for admin, carregar todos os parceiros
       if (user?.profile === 'admin') {
         const { data: partnersData, error: partnersError } = await supabase
           .from('partners')
@@ -122,40 +124,25 @@ export function ExamManagement() {
 
       const effectivePartnerId = userPartnerId || currentPartner?.id;
 
-      console.log('🔍 Carregando dados com partner_id:', effectivePartnerId);
-      console.log('👤 Perfil do usuário:', user?.profile);
-
-      // Carregar médicos com filtro correto
+      // Carregar médicos
       let doctorsQuery = supabase
         .from('doctors')
         .select('*')
         .order('name');
 
       if (user?.profile === 'parceiro' && effectivePartnerId) {
-        console.log('🎯 Filtrando médicos do partner:', effectivePartnerId);
         doctorsQuery = doctorsQuery.eq('partner_id', effectivePartnerId);
       }
 
-      // Carregar convênios com filtro correto
+      // Carregar convênios
       let insurancesQuery = supabase
         .from('insurances')
         .select('*')
         .order('name');
 
       if (user?.profile === 'parceiro' && effectivePartnerId) {
-        console.log('🎯 Filtrando convênios para partner:', effectivePartnerId);
         insurancesQuery = insurancesQuery.or(`partner_id.eq.${effectivePartnerId},partner_id.is.null`);
       }
-
-      console.log('🔍 Executando query de convênios...');
-      const insurancesRes = await insurancesQuery;
-      
-      if (insurancesRes.error) {
-        console.error('❌ Erro ao buscar convênios filtrados:', insurancesRes.error);
-        throw insurancesRes.error;
-      }
-
-      console.log('✅ Convênios carregados com sucesso:', insurancesRes.data);
 
       // Carregar exames
       let examsQuery = supabase
@@ -172,29 +159,32 @@ export function ExamManagement() {
         examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
       }
 
-      const [examsRes, doctorsRes] = await Promise.all([
+      // Executar todas as queries em paralelo
+      const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
         examsQuery,
-        doctorsQuery
+        doctorsQuery,
+        insurancesQuery
       ]);
 
       if (examsRes.error) throw examsRes.error;
       if (doctorsRes.error) throw doctorsRes.error;
+      if (insurancesRes.error) throw insurancesRes.error;
 
+      // Atualizar estados
       setExamRequests(examsRes.data || []);
       setDoctors(doctorsRes.data || []);
       setInsurances(insurancesRes.data || []);
+
+      // Atualizar formData com partner_id se necessário
+      if (user?.profile === 'parceiro' && currentPartner && !formData.partner_id) {
+        setFormData(prev => ({ ...prev, partner_id: currentPartner.id }));
+      }
 
       console.log('📊 Dados carregados com SUCESSO:', {
         exames: examsRes.data?.length,
         medicos: doctorsRes.data?.length,
         convenios: insurancesRes.data?.length,
-        perfil: user?.profile,
-        partner: effectivePartnerId,
-        lista_convenios: insurancesRes.data?.map(i => ({ 
-          id: i.id, 
-          name: i.name, 
-          partner_id: i.partner_id 
-        }))
+        perfil: user?.profile
       });
 
     } catch (error) {
@@ -202,20 +192,30 @@ export function ExamManagement() {
     } finally {
       setLoading(false);
     }
-  }, [user, currentPartner]);
+  }, [user, currentPartner, formData.partner_id]);
+
+  // Executar loadAllData apenas uma vez quando user mudar
+  useEffect(() => {
+    if (user) {
+      console.log('🔄 Usuário autenticado, carregando dados...');
+      loadAllData();
+    }
+  }, [user]); // Removido loadAllData das dependências
+
+  // Removido useEffect problemático que causava loops
+  // useEffect(() => {
+  //   if (currentPartner && user?.profile === 'parceiro') {
+  //     console.log('🔄 currentPartner mudou, recarregando dados...', currentPartner);
+  //     loadData(currentPartner.id);
+  //   }
+  // }, [currentPartner, user, loadData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      console.log('🏥 Criando encaminhamento de exame:', {
-        ...formData,
-        user_profile: user?.profile,
-        current_partner: currentPartner,
-        medicos_disponiveis: doctors.length,
-        convenios_disponiveis: insurances.length
-      });
+      console.log('🏥 Criando encaminhamento de exame:', formData);
 
       const examData = {
         ...formData,
@@ -228,14 +228,11 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      if (user?.profile === 'parceiro' && currentPartner) {
-        await loadData(currentPartner.id);
-      } else {
-        await loadData();
-      }
+      // Recarregar dados
+      await loadAllData();
 
       setShowForm(false);
-      // Reset do formulário incluindo phone
+      // Reset do formulário
       setFormData({
         patient_name: '',
         birth_date: '',
@@ -245,7 +242,7 @@ export function ExamManagement() {
         payment_type: 'particular',
         insurance_id: '',
         partner_id: currentPartner?.id || '',
-        phone: '' // RESET DO PHONE
+        phone: ''
       });
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
@@ -268,11 +265,7 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      if (user?.profile === 'parceiro' && currentPartner) {
-        await loadData(currentPartner.id);
-      } else {
-        await loadData();
-      }
+      await loadAllData();
 
       setSelectedExam(null);
       setShowConduct(false);
@@ -287,17 +280,7 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 REMOVIDO: Função para atualizar status (apenas encaminhado/executado)
-  // O parceiro não pode executar exames, apenas a recepção
-
-  useEffect(() => {
-    if (currentPartner && user?.profile === 'parceiro') {
-      console.log('🔄 currentPartner mudou, recarregando dados...', currentPartner);
-      loadData(currentPartner.id);
-    }
-  }, [currentPartner, user, loadData]);
-
-  // 🔥 ATUALIZADO: Cores dos status
+  // Cores dos status
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'encaminhado':
@@ -309,13 +292,13 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 ATUALIZADO: Labels dos status
+  // Labels dos status
   const statusLabels = {
     encaminhado: 'Encaminhado ao CTR',
     executado: 'Executado'
   };
 
-  // 🔥 NOVO: Cores para conduta
+  // Cores para conduta
   const getConductColor = (conduct: string) => {
     switch (conduct) {
       case 'cirurgica':
@@ -327,7 +310,7 @@ export function ExamManagement() {
     }
   };
 
-  // 🔥 NOVO: Labels para conduta
+  // Labels para conduta
   const conductLabels = {
     cirurgica: 'Cirúrgica',
     ambulatorial: 'Ambulatorial'
@@ -364,6 +347,7 @@ export function ExamManagement() {
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={doctors.length === 0 && user?.profile === 'parceiro'}
         >
           <Plus className="w-4 h-4" />
           <span>Encaminhar Exame</span>
@@ -384,15 +368,6 @@ export function ExamManagement() {
               </p>
             </div>
           )}
-
-          {/* Debug info */}
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-800">
-              🔍 Debug: {insurances.length} convênio(s) disponível(s) | 
-              Perfil: {user?.profile} | 
-              Partner: {currentPartner?.name || 'Nenhum'}
-            </p>
-          </div>
 
           {formData.payment_type === 'convenio' && insurances.length === 0 && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -469,7 +444,6 @@ export function ExamManagement() {
                 placeholder="Ex: Raio-X, Ultrassom"
               />
             </div>
-            {/* 🔥 NOVO CAMPO TELEFONE */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Telefone <span className="text-red-500">*</span>
@@ -569,7 +543,7 @@ export function ExamManagement() {
         </div>
       )}
 
-      {/* 🔥 ATUALIZADO: Modal para Conduta */}
+      {/* Modal para Conduta */}
       {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
@@ -721,9 +695,6 @@ export function ExamManagement() {
                   )}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
-                      {/* 🔥 REMOVIDO: Botão para marcar como executado (apenas para recepção) */}
-                      
-                      {/* 🔥 ATUALIZADO: Botão para conduta (apenas para exames executados) */}
                       {exam.status === 'executado' && (
                         <button
                           onClick={() => {
