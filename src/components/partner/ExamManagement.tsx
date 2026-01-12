@@ -57,7 +57,7 @@ export function ExamManagement() {
     phone: ''
   });
 
-  // Funções puras (sem dependências de estado que mudam frequentemente)
+  // Função para formatar telefone
   const formatPhone = useCallback((value: string) => {
     const numbers = value.replace(/\D/g, '');
     
@@ -72,6 +72,7 @@ export function ExamManagement() {
     }
   }, []);
 
+  // Handler de telefone
   const handlePhoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
     const formattedValue = formatPhone(rawValue);
@@ -82,11 +83,11 @@ export function ExamManagement() {
     }));
   }, [formatPhone]);
 
-  // Carregar dados uma única vez
+  // Carregar dados iniciais
   useEffect(() => {
     let isMounted = true;
     
-    const loadData = async () => {
+    const loadInitialData = async () => {
       if (!user || !isMounted) return;
       
       try {
@@ -94,6 +95,7 @@ export function ExamManagement() {
         console.log('🚀 Iniciando carregamento de dados para:', user.email);
 
         // Se for parceiro, buscar partner primeiro
+        let partnerId = '';
         if (user.profile === 'parceiro') {
           const { data: userData, error: userError } = await supabase
             .from('users')
@@ -112,13 +114,13 @@ export function ExamManagement() {
             if (isMounted) {
               setCurrentPartner(partner);
               setFormData(prev => ({ ...prev, partner_id: partner.id }));
+              partnerId = partner.id;
             }
           }
         }
 
-        // Preparar queries com base no perfil
-        const effectivePartnerId = currentPartner?.id || 
-          (user.profile === 'parceiro' ? user.id : undefined);
+        // Preparar queries
+        const effectivePartnerId = partnerId;
 
         // Query de médicos
         let doctorsQuery = supabase
@@ -200,53 +202,19 @@ export function ExamManagement() {
       }
     };
 
-    loadData();
+    loadInitialData();
 
     return () => {
       isMounted = false;
     };
-  }, [user]); // 🔥 Apenas user como dependência
+  }, [user]);
 
-  // Função para criar exame
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      setLoading(true);
-      
-      const examData = {
-        ...formData,
-        insurance_id: formData.payment_type === 'convenio' ? formData.insurance_id : null,
-      };
-
-      const { error } = await supabase
-        .from('exam_requests')
-        .insert([examData]);
-
-      if (error) throw error;
-
-      // Recarregar dados
-      await loadFreshData();
-      
-      setShowForm(false);
-      resetFormData();
-      
-      alert('Exame encaminhado com sucesso!');
-    } catch (error) {
-      console.error('Error creating exam request:', error);
-      alert('Erro ao encaminhar exame');
-    } finally {
-      setLoading(false);
-    }
-  }, [formData]);
-
-  // Função auxiliar para recarregar dados
-  const loadFreshData = useCallback(async () => {
+  // Função para recarregar dados
+  const reloadData = useCallback(async () => {
     if (!user) return;
     
     try {
-      const effectivePartnerId = currentPartner?.id || 
-        (user.profile === 'parceiro' ? user.id : undefined);
+      const effectivePartnerId = currentPartner?.id;
 
       // Query de exames
       let examsQuery = supabase
@@ -272,23 +240,58 @@ export function ExamManagement() {
     }
   }, [user, currentPartner]);
 
-  // Função para resetar form data
-  const resetFormData = useCallback(() => {
-    setFormData({
-      patient_name: '',
-      birth_date: '',
-      consultation_date: '',
-      doctor_id: '',
-      exam_type: '',
-      payment_type: 'particular',
-      insurance_id: '',
-      partner_id: currentPartner?.id || '',
-      phone: ''
-    });
-  }, [currentPartner]);
+  // Função para criar exame - SIMPLIFICADA
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      setLoading(true);
+      
+      // Preparar dados para inserção
+      const examData = {
+        ...formData,
+        insurance_id: formData.payment_type === 'convenio' ? formData.insurance_id : null,
+      };
+
+      console.log('📤 Enviando dados do exame:', examData);
+
+      const { error } = await supabase
+        .from('exam_requests')
+        .insert([examData]);
+
+      if (error) {
+        console.error('❌ Erro do Supabase:', error);
+        throw error;
+      }
+
+      // Recarregar dados
+      await reloadData();
+      
+      // Fechar formulário e resetar
+      setShowForm(false);
+      setFormData({
+        patient_name: '',
+        birth_date: '',
+        consultation_date: '',
+        doctor_id: '',
+        exam_type: '',
+        payment_type: 'particular',
+        insurance_id: '',
+        partner_id: currentPartner?.id || '',
+        phone: ''
+      });
+      
+      alert('Exame encaminhado com sucesso!');
+    } catch (error) {
+      console.error('❌ Error creating exam request:', error);
+      alert('Erro ao encaminhar exame. Verifique o console para mais detalhes.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Função para atualizar conduta
-  const handleConductUpdate = useCallback(async () => {
+  const handleConductUpdate = async () => {
     if (!selectedExam) return;
     
     try {
@@ -302,7 +305,7 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      await loadFreshData();
+      await reloadData();
       
       setSelectedExam(null);
       setShowConduct(false);
@@ -316,7 +319,7 @@ export function ExamManagement() {
       console.error('Error updating conduct:', error);
       alert('Erro ao registrar conduta');
     }
-  }, [selectedExam, conductData, loadFreshData]);
+  };
 
   // Valores memoizados
   const examCountText = useMemo(() => {
@@ -411,17 +414,18 @@ export function ExamManagement() {
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Campos do formulário */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente *</label>
               <input
                 type="text"
                 required
                 value={formData.patient_name}
                 onChange={(e) => setFormData(prev => ({ ...prev, patient_name: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Nome completo"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento *</label>
               <input
                 type="date"
                 required
@@ -431,7 +435,7 @@ export function ExamManagement() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data da Consulta</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data da Consulta *</label>
               <input
                 type="date"
                 required
@@ -441,7 +445,7 @@ export function ExamManagement() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Médico Solicitante</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Médico Solicitante *</label>
               <select
                 required
                 value={formData.doctor_id}
@@ -456,21 +460,26 @@ export function ExamManagement() {
                   </option>
                 ))}
               </select>
+              {doctors.length === 0 && (
+                <p className="text-xs text-red-600 mt-1">
+                  É necessário cadastrar médicos primeiro
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Exame</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Exame *</label>
               <input
                 type="text"
                 required
                 value={formData.exam_type}
                 onChange={(e) => setFormData(prev => ({ ...prev, exam_type: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ex: Raio-X, Ultrassom"
+                placeholder="Ex: Raio-X, Ultrassom, Tomografia"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Telefone <span className="text-red-500">*</span>
+                Telefone *
               </label>
               <input
                 type="tel"
@@ -486,7 +495,7 @@ export function ExamManagement() {
             
             {user?.profile === 'admin' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro *</label>
                 <select
                   required
                   value={formData.partner_id}
@@ -502,10 +511,14 @@ export function ExamManagement() {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Pagamento</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Pagamento *</label>
               <select
                 value={formData.payment_type}
-                onChange={(e) => setFormData(prev => ({ ...prev, payment_type: e.target.value as 'particular' | 'convenio' }))}
+                onChange={(e) => setFormData(prev => ({ 
+                  ...prev, 
+                  payment_type: e.target.value as 'particular' | 'convenio',
+                  insurance_id: e.target.value === 'particular' ? '' : prev.insurance_id
+                }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="particular">Particular</option>
@@ -516,12 +529,12 @@ export function ExamManagement() {
             </div>
             
             {formData.payment_type === 'convenio' && (
-              <div className="md:col-span-3">
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Convênio
+                  Convênio *
                 </label>
                 <select
-                  required
+                  required={formData.payment_type === 'convenio'}
                   value={formData.insurance_id}
                   onChange={(e) => setFormData(prev => ({ ...prev, insurance_id: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -532,21 +545,39 @@ export function ExamManagement() {
                     <option key={insurance.id} value={insurance.id}>{insurance.name}</option>
                   ))}
                 </select>
+                {insurances.length === 0 && formData.payment_type === 'convenio' && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Cadastre convênios primeiro ou altere para "Particular"
+                  </p>
+                )}
               </div>
             )}
             
-            <div className="md:col-span-3 flex space-x-3">
+            <div className="md:col-span-3 flex space-x-3 pt-4">
               <button
                 type="submit"
-                disabled={loading || doctors.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                disabled={loading || (doctors.length === 0)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? 'Encaminhando...' : 'Encaminhar Exame'}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                onClick={() => {
+                  setShowForm(false);
+                  setFormData({
+                    patient_name: '',
+                    birth_date: '',
+                    consultation_date: '',
+                    doctor_id: '',
+                    exam_type: '',
+                    payment_type: 'particular',
+                    insurance_id: '',
+                    partner_id: currentPartner?.id || '',
+                    phone: ''
+                  });
+                }}
+                className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
                 Cancelar
               </button>
@@ -561,7 +592,7 @@ export function ExamManagement() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Conduta</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Conduta *</label>
               <select
                 required
                 value={conductData.conduct}
@@ -613,7 +644,7 @@ export function ExamManagement() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paciente</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Telefone</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Nascimento</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Nasc.</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Consulta</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Médico</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exame</th>
