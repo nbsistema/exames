@@ -23,16 +23,19 @@ export function ExamReports() {
     patientName: ''
   });
 
+  // 🔥 CORRIGIDO: Carregar informações do usuário
   useEffect(() => {
     loadUserInfo();
   }, []);
 
+  // 🔥 CORRIGIDO: Carregar exames quando userProfile mudar
   useEffect(() => {
-    if (userProfile) {
+    if (userProfile !== '') { // Verifica se userProfile foi definido (pode ser string vazia)
       loadExamRequests();
     }
   }, [userProfile, userPartnerId]);
 
+  // 🔥 CORRIGIDO: Aplicar filtros quando examRequests ou filters mudarem
   useEffect(() => {
     applyFilters();
   }, [examRequests, filters]);
@@ -40,32 +43,61 @@ export function ExamReports() {
   const loadUserInfo = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('profile, partner_id, partners(name)')
-          .eq('id', user.id)
-          .single();
-      
-        if (userData) {
-          setUserProfile(userData.profile || '');
-          setUserPartnerId(userData.partner_id);
-          if (userData.partners) {
-            setCurrentPartner(userData.partners);
-          }
-          console.log('👤 Usuário relatórios:', {
-            profile: userData.profile,
-            partnerId: userData.partner_id,
-            partnerName: userData.partners?.name
+      if (!user) {
+        console.log('❌ Nenhum usuário autenticado');
+        setUserProfile('');
+        setUserPartnerId(null);
+        setCurrentPartner(null);
+        setLoading(false);
+        return;
+      }
+
+      console.log('👤 Usuário autenticado encontrado:', user.email);
+
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('profile, partner_id, partners!inner(name)')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Erro ao buscar dados do usuário:', error);
+        setUserProfile('');
+        setUserPartnerId(null);
+        setCurrentPartner(null);
+        return;
+      }
+
+      if (userData) {
+        console.log('📋 Dados do usuário carregados:', userData);
+        setUserProfile(userData.profile || '');
+        setUserPartnerId(userData.partner_id);
+        
+        // 🔥 CORRIGIDO: Acessar corretamente o partner name
+        if (userData.partners) {
+          setCurrentPartner({ 
+            id: userData.partner_id, 
+            name: userData.partners.name 
           });
+        } else {
+          setCurrentPartner(null);
         }
       }
     } catch (error) {
-      console.error('Error loading user info:', error);
+      console.error('❌ Error loading user info:', error);
+      setUserProfile('');
+      setUserPartnerId(null);
+      setCurrentPartner(null);
+      setLoading(false);
     }
   };
 
   const loadExamRequests = async () => {
+    if (!userProfile) {
+      console.log('⏳ Aguardando perfil do usuário...');
+      return;
+    }
+
     setLoading(true);
   
     try {
@@ -87,33 +119,45 @@ export function ExamReports() {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao carregar exames:', error);
+        throw error;
+      }
     
-      console.log('📊 Exames para relatório:', data?.length);
+      console.log('📊 Exames para relatório:', data?.length || 0);
       setExamRequests(data || []);
     } catch (error) {
-      console.error('Error loading exam requests for reports:', error);
+      console.error('❌ Error loading exam requests for reports:', error);
+      setExamRequests([]);
     } finally {
       setLoading(false);
     }
   };
 
   const applyFilters = () => {
+    if (examRequests.length === 0) {
+      setFilteredExams([]);
+      return;
+    }
+
     let filtered = [...examRequests];
 
     // Filtro por data
     if (filters.startDate) {
-      filtered = filtered.filter(exam => 
-        new Date(exam.created_at) >= new Date(filters.startDate)
-      );
+      filtered = filtered.filter(exam => {
+        const examDate = new Date(exam.created_at);
+        const startDate = new Date(filters.startDate);
+        return examDate >= startDate;
+      });
     }
 
     if (filters.endDate) {
       const endDate = new Date(filters.endDate);
       endDate.setHours(23, 59, 59, 999); // Fim do dia
-      filtered = filtered.filter(exam => 
-        new Date(exam.created_at) <= endDate
-      );
+      filtered = filtered.filter(exam => {
+        const examDate = new Date(exam.created_at);
+        return examDate <= endDate;
+      });
     }
 
     // Filtro por status
@@ -128,13 +172,17 @@ export function ExamReports() {
 
     // Filtro por conduta
     if (filters.conduct) {
-      filtered = filtered.filter(exam => exam.conduct === filters.conduct);
+      if (filters.conduct === 'null') {
+        filtered = filtered.filter(exam => !exam.conduct || exam.conduct === 'null');
+      } else {
+        filtered = filtered.filter(exam => exam.conduct === filters.conduct);
+      }
     }
 
     // Filtro por nome do paciente
     if (filters.patientName) {
       filtered = filtered.filter(exam => 
-        exam.patient_name.toLowerCase().includes(filters.patientName.toLowerCase())
+        exam.patient_name?.toLowerCase().includes(filters.patientName.toLowerCase())
       );
     }
 
@@ -142,17 +190,22 @@ export function ExamReports() {
   };
 
   const exportToExcel = async () => {
+    if (filteredExams.length === 0) {
+      alert('Nenhum dado para exportar');
+      return;
+    }
+
     setExporting(true);
     try {
       // Preparar dados para exportação
       const exportData = filteredExams.map(exam => ({
-        'Paciente': exam.patient_name,
+        'Paciente': exam.patient_name || '',
         'Telefone': exam.phone || 'Não informado',
-        'Data Nascimento': new Date(exam.birth_date).toLocaleDateString('pt-BR'),
-        'Data Consulta': new Date(exam.consultation_date).toLocaleDateString('pt-BR'),
+        'Data Nascimento': exam.birth_date ? new Date(exam.birth_date).toLocaleDateString('pt-BR') : '',
+        'Data Consulta': exam.consultation_date ? new Date(exam.consultation_date).toLocaleDateString('pt-BR') : '',
         'Médico': exam.doctors?.name || 'N/A',
         'CRM': exam.doctors?.crm || 'N/A',
-        'Tipo de Exame': exam.exam_type,
+        'Tipo de Exame': exam.exam_type || '',
         'Status': getStatusLabel(exam.status),
         'Conduta': getConductLabel(exam.conduct),
         'Observações Conduta': exam.conduct_observations || '',
@@ -160,8 +213,8 @@ export function ExamReports() {
         'Convênio': exam.insurances?.name || 'N/A',
         'Parceiro': exam.partners?.name || 'N/A',
         'Observações': exam.observations || '',
-        'Data Criação': new Date(exam.created_at).toLocaleDateString('pt-BR'),
-        'Hora Criação': new Date(exam.created_at).toLocaleTimeString('pt-BR')
+        'Data Criação': exam.created_at ? new Date(exam.created_at).toLocaleDateString('pt-BR') : '',
+        'Hora Criação': exam.created_at ? new Date(exam.created_at).toLocaleTimeString('pt-BR') : ''
       }));
 
       // Criar workbook e worksheet
@@ -189,6 +242,11 @@ export function ExamReports() {
   };
 
   const exportToPDF = async () => {
+    if (filteredExams.length === 0) {
+      alert('Nenhum dado para exportar');
+      return;
+    }
+
     setExporting(true);
     try {
       // Criar novo PDF
@@ -197,7 +255,6 @@ export function ExamReports() {
       // Configurações do PDF
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
-      const contentWidth = pageWidth - (margin * 2);
 
       // Cabeçalho
       doc.setFontSize(16);
@@ -214,12 +271,12 @@ export function ExamReports() {
 
       // Preparar dados para a tabela
       const tableData = filteredExams.map(exam => [
-        exam.patient_name,
+        exam.patient_name || '',
         exam.phone || 'Não informado',
-        new Date(exam.birth_date).toLocaleDateString('pt-BR'),
-        new Date(exam.consultation_date).toLocaleDateString('pt-BR'),
+        exam.birth_date ? new Date(exam.birth_date).toLocaleDateString('pt-BR') : '',
+        exam.consultation_date ? new Date(exam.consultation_date).toLocaleDateString('pt-BR') : '',
         exam.doctors?.name || 'N/A',
-        exam.exam_type.substring(0, 30) + (exam.exam_type.length > 30 ? '...' : ''),
+        exam.exam_type ? (exam.exam_type.substring(0, 30) + (exam.exam_type.length > 30 ? '...' : '')) : '',
         getStatusLabel(exam.status),
         getConductLabel(exam.conduct),
         exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`
@@ -292,7 +349,7 @@ export function ExamReports() {
       encaminhado: 'Encaminhado ao CTR',
       executado: 'Executado'
     };
-    return labels[status] || status;
+    return labels[status] || status || 'Não definido';
   };
 
   const getConductLabel = (conduct: string) => {
@@ -328,8 +385,8 @@ export function ExamReports() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -348,7 +405,7 @@ export function ExamReports() {
           <button
             onClick={exportToExcel}
             disabled={exporting || filteredExams.length === 0}
-            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <FileText className="w-4 h-4" />
             <span>{exporting ? 'Exportando...' : 'Excel'}</span>
@@ -356,7 +413,7 @@ export function ExamReports() {
           <button
             onClick={exportToPDF}
             disabled={exporting || filteredExams.length === 0}
-            className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Download className="w-4 h-4" />
             <span>{exporting ? 'Exportando...' : 'PDF'}</span>
@@ -529,25 +586,27 @@ export function ExamReports() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredExams.slice(0, 10).map((exam) => (
-                  <tr key={exam.id} className="hover:bg-gray-50">
+                {filteredExams.slice(0, 10).map((exam, index) => (
+                  <tr key={exam.id || `exam-${index}`} className="hover:bg-gray-50">
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {exam.patient_name}
+                      {exam.patient_name || 'N/A'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {exam.phone || 'Não informado'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(exam.consultation_date).toLocaleDateString('pt-BR')}
+                      {exam.consultation_date ? new Date(exam.consultation_date).toLocaleDateString('pt-BR') : 'N/A'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {exam.doctors?.name || 'N/A'}
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-500 max-w-xs">
                       <div className="break-words">
-                        {exam.exam_type.length > 50 
-                          ? `${exam.exam_type.substring(0, 50)}...` 
-                          : exam.exam_type
+                        {exam.exam_type ? 
+                          (exam.exam_type.length > 50 
+                            ? `${exam.exam_type.substring(0, 50)}...` 
+                            : exam.exam_type)
+                          : 'N/A'
                         }
                       </div>
                     </td>
