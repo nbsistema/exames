@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, FileText, BarChart3 } from 'lucide-react';
+import { Calendar, Download, Filter, FileText, BarChart3, RefreshCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -373,7 +373,7 @@ export function CheckupReports() {
             onClick={loadReportData}
             className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCcw className="w-4 h-4" />
             <span>Atualizar</span>
           </button>
         </div>
