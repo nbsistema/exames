@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Eye, Edit } from 'lucide-react';
 import { supabase, ExamRequest, Doctor, Insurance, Partner } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,7 +28,9 @@ export function ExamManagement() {
     partner_id: '',
     phone: ''
   });
+  
   const { user } = useAuth();
+  const hasLoadedRef = useRef(false); // 🔥 Evita carregamentos múltiplos
 
   // Função para formatar telefone com máscara
   const formatPhone = (value: string) => {
@@ -56,57 +58,7 @@ export function ExamManagement() {
     });
   };
 
-  // Carregar dados uma única vez com controle de estado
-  const loadAllData = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('🚀 Iniciando carregamento de dados...');
-
-      // Se for parceiro, carregar partner primeiro
-      if (user?.profile === 'parceiro') {
-        console.log('🔍 Buscando partner_id do usuário...', user?.id);
-        
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('partner_id, partners!inner(id, name)')
-          .eq('id', user.id)
-          .single();
-
-        if (userError) {
-          console.error('❌ Erro ao buscar partner_id:', userError);
-          setLoading(false);
-          return;
-        }
-
-        console.log('📋 Dados do usuário:', userData);
-
-        if (userData && userData.partner_id) {
-          const partner = {
-            id: userData.partner_id,
-            name: userData.partners?.name || 'Parceiro'
-          };
-          
-          console.log('✅ Partner carregado:', partner);
-          setCurrentPartner(partner);
-          
-          // Carregar todos os dados usando o partner_id
-          await loadData(partner.id);
-        } else {
-          console.error('❌ Usuário parceiro sem partner_id');
-          alert('Erro: Parceiro não vinculado. Contate o administrador.');
-          setLoading(false);
-        }
-      } else {
-        // Se for admin, carregar dados gerais
-        await loadData();
-      }
-    } catch (error) {
-      console.error('Error in loadAllData:', error);
-      setLoading(false);
-    }
-  }, [user]);
-
-  // Carregar dados principais
+  // Função para carregar dados principais
   const loadData = useCallback(async (userPartnerId?: string) => {
     try {
       console.log('📦 Carregando dados com partnerId:', userPartnerId);
@@ -175,11 +127,6 @@ export function ExamManagement() {
       setDoctors(doctorsRes.data || []);
       setInsurances(insurancesRes.data || []);
 
-      // Atualizar formData com partner_id se necessário
-      if (user?.profile === 'parceiro' && currentPartner && !formData.partner_id) {
-        setFormData(prev => ({ ...prev, partner_id: currentPartner.id }));
-      }
-
       console.log('📊 Dados carregados com SUCESSO:', {
         exames: examsRes.data?.length,
         medicos: doctorsRes.data?.length,
@@ -192,23 +139,79 @@ export function ExamManagement() {
     } finally {
       setLoading(false);
     }
-  }, [user, currentPartner, formData.partner_id]);
+  }, [user, currentPartner]);
 
-  // Executar loadAllData apenas uma vez quando user mudar
-  useEffect(() => {
-    if (user) {
-      console.log('🔄 Usuário autenticado, carregando dados...');
-      loadAllData();
+  // Carregar partner e dados
+  const loadPartnerAndData = useCallback(async () => {
+    if (!user || hasLoadedRef.current) return;
+    
+    try {
+      setLoading(true);
+      console.log('🚀 Iniciando carregamento de dados...');
+
+      // Se for parceiro, carregar partner primeiro
+      if (user.profile === 'parceiro') {
+        console.log('🔍 Buscando partner_id do usuário...', user.id);
+        
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('partner_id, partners!inner(id, name)')
+          .eq('id', user.id)
+          .single();
+
+        if (userError) {
+          console.error('❌ Erro ao buscar partner_id:', userError);
+          setLoading(false);
+          return;
+        }
+
+        console.log('📋 Dados do usuário:', userData);
+
+        if (userData && userData.partner_id) {
+          const partner = {
+            id: userData.partner_id,
+            name: userData.partners?.name || 'Parceiro'
+          };
+          
+          console.log('✅ Partner carregado:', partner);
+          setCurrentPartner(partner);
+          
+          // Atualizar formData com partner_id
+          setFormData(prev => ({ ...prev, partner_id: partner.id }));
+          
+          // Carregar dados com partner
+          await loadData(partner.id);
+        } else {
+          console.error('❌ Usuário parceiro sem partner_id');
+          alert('Erro: Parceiro não vinculado. Contate o administrador.');
+          setLoading(false);
+        }
+      } else {
+        // Se for admin, carregar dados gerais
+        await loadData();
+      }
+      
+      hasLoadedRef.current = true; // 🔥 Marca como já carregado
+      
+    } catch (error) {
+      console.error('Error in loadPartnerAndData:', error);
+      setLoading(false);
     }
-  }, [user]); // Removido loadAllData das dependências
+  }, [user, loadData]);
 
-  // Removido useEffect problemático que causava loops
-  // useEffect(() => {
-  //   if (currentPartner && user?.profile === 'parceiro') {
-  //     console.log('🔄 currentPartner mudou, recarregando dados...', currentPartner);
-  //     loadData(currentPartner.id);
-  //   }
-  // }, [currentPartner, user, loadData]);
+  // Executar apenas uma vez quando user mudar
+  useEffect(() => {
+    if (user && !hasLoadedRef.current) {
+      console.log('🔄 Usuário autenticado, carregando dados...');
+      loadPartnerAndData();
+    }
+    
+    // Cleanup function
+    return () => {
+      // Limpa qualquer timeout ou intervalo se houver
+      hasLoadedRef.current = false; // 🔥 Permite recarregar se mudar de usuário
+    };
+  }, [user, loadPartnerAndData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,12 +231,16 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      // Recarregar dados
-      await loadAllData();
+      // Recarregar dados SEM resetar o hasLoadedRef
+      if (user?.profile === 'parceiro' && currentPartner) {
+        await loadData(currentPartner.id);
+      } else {
+        await loadData();
+      }
 
       setShowForm(false);
-      // Reset do formulário
-      setFormData({
+      // Reset do formulário (mas mantém partner_id)
+      setFormData(prev => ({
         patient_name: '',
         birth_date: '',
         consultation_date: '',
@@ -241,9 +248,9 @@ export function ExamManagement() {
         exam_type: '',
         payment_type: 'particular',
         insurance_id: '',
-        partner_id: currentPartner?.id || '',
+        partner_id: prev.partner_id, // 🔥 Mantém o partner_id
         phone: ''
-      });
+      }));
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
       console.error('Error creating exam request:', error);
@@ -265,7 +272,12 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      await loadAllData();
+      // Recarregar dados SEM resetar o hasLoadedRef
+      if (user?.profile === 'parceiro' && currentPartner) {
+        await loadData(currentPartner.id);
+      } else {
+        await loadData();
+      }
 
       setSelectedExam(null);
       setShowConduct(false);
@@ -316,6 +328,11 @@ export function ExamManagement() {
     ambulatorial: 'Ambulatorial'
   };
 
+  // 🔥 Memoize valores computados para evitar re-renders
+  const examCountText = React.useMemo(() => {
+    return `${examRequests.length} exame${examRequests.length !== 1 ? 's' : ''} encaminhado${examRequests.length !== 1 ? 's' : ''}${currentPartner ? ` por ${currentPartner.name}` : ''}`;
+  }, [examRequests.length, currentPartner]);
+
   if (loading && examRequests.length === 0) {
     return (
       <div className="flex justify-center py-12">
@@ -340,8 +357,7 @@ export function ExamManagement() {
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Encaminhamento de Exames</h2>
           <p className="text-sm text-gray-600">
-            {examRequests.length} exame{examRequests.length !== 1 ? 's' : ''} encaminhado{examRequests.length !== 1 ? 's' : ''}
-            {currentPartner && ` por ${currentPartner.name}`}
+            {examCountText}
           </p>
         </div>
         <button
