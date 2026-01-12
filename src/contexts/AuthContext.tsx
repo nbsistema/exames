@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (currentUser?.id !== user?.id) {
           setUser(currentUser);
         }
-      }, 30000); // Verificar a cada 30 segundos
+      }, 120000); // Verificar a cada 120 segundos
 
       return () => clearInterval(interval);
     };
