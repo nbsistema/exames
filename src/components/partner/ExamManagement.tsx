@@ -1,22 +1,50 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Eye, Edit } from 'lucide-react';
-import { supabase, ExamRequest, Doctor, Insurance, Partner } from '../../lib/supabase';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, Edit } from 'lucide-react';
+import { supabase, Doctor, Insurance, Partner } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
+interface ExamRequest {
+  id: string;
+  patient_name: string;
+  phone: string;
+  birth_date: string;
+  consultation_date: string;
+  doctor_id: string;
+  exam_type: string;
+  payment_type: 'particular' | 'convenio';
+  insurance_id: string | null;
+  partner_id: string;
+  status: 'encaminhado' | 'executado';
+  conduct: 'cirurgica' | 'ambulatorial' | null;
+  conduct_observations: string | null;
+  doctors: { name: string };
+  insurances: { name: string } | null;
+  partners: { name: string };
+  created_at: string;
+}
+
 export function ExamManagement() {
-  const [examRequests, setExamRequests] = useState<any[]>([]);
+  const { user } = useAuth();
+  
+  // Estados principais
+  const [examRequests, setExamRequests] = useState<ExamRequest[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [insurances, setInsurances] = useState<Insurance[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [currentPartner, setCurrentPartner] = useState<Partner | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Estados de UI
   const [showForm, setShowForm] = useState(false);
-  const [selectedExam, setSelectedExam] = useState<any>(null);
+  const [selectedExam, setSelectedExam] = useState<ExamRequest | null>(null);
   const [showConduct, setShowConduct] = useState(false);
+  
+  // Estados de formulário
   const [conductData, setConductData] = useState({
     conduct: '' as 'cirurgica' | 'ambulatorial' | '',
     conduct_observations: ''
   });
+  
   const [formData, setFormData] = useState({
     patient_name: '',
     birth_date: '',
@@ -28,12 +56,9 @@ export function ExamManagement() {
     partner_id: '',
     phone: ''
   });
-  
-  const { user } = useAuth();
-  const hasLoadedRef = useRef(false); // 🔥 Evita carregamentos múltiplos
 
-  // Função para formatar telefone com máscara
-  const formatPhone = (value: string) => {
+  // Funções puras (sem dependências de estado que mudam frequentemente)
+  const formatPhone = useCallback((value: string) => {
     const numbers = value.replace(/\D/g, '');
     
     if (numbers.length <= 10) {
@@ -45,181 +70,150 @@ export function ExamManagement() {
         .replace(/(\d{2})(\d)/, '($1) $2')
         .replace(/(\d{5})(\d)/, '$1-$2');
     }
-  };
+  }, []);
 
-  // Handler específico para telefone
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
     const formattedValue = formatPhone(rawValue);
     
-    setFormData({ 
-      ...formData, 
+    setFormData(prev => ({ 
+      ...prev, 
       phone: formattedValue 
-    });
-  };
+    }));
+  }, [formatPhone]);
 
-  // Função para carregar dados principais
-  const loadData = useCallback(async (userPartnerId?: string) => {
-    try {
-      console.log('📦 Carregando dados com partnerId:', userPartnerId);
+  // Carregar dados uma única vez
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (!user || !isMounted) return;
       
-      // Se for admin, carregar todos os parceiros
-      if (user?.profile === 'admin') {
-        const { data: partnersData, error: partnersError } = await supabase
-          .from('partners')
+      try {
+        setLoading(true);
+        console.log('🚀 Iniciando carregamento de dados para:', user.email);
+
+        // Se for parceiro, buscar partner primeiro
+        if (user.profile === 'parceiro') {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('partner_id, partners!inner(id, name)')
+            .eq('id', user.id)
+            .single();
+
+          if (userError) throw userError;
+
+          if (userData && userData.partner_id) {
+            const partner = {
+              id: userData.partner_id,
+              name: userData.partners?.name || 'Parceiro'
+            };
+            
+            if (isMounted) {
+              setCurrentPartner(partner);
+              setFormData(prev => ({ ...prev, partner_id: partner.id }));
+            }
+          }
+        }
+
+        // Preparar queries com base no perfil
+        const effectivePartnerId = currentPartner?.id || 
+          (user.profile === 'parceiro' ? user.id : undefined);
+
+        // Query de médicos
+        let doctorsQuery = supabase
+          .from('doctors')
           .select('*')
           .order('name');
 
-        if (partnersError) throw partnersError;
-        setPartners(partnersData || []);
+        if (user.profile === 'parceiro' && effectivePartnerId) {
+          doctorsQuery = doctorsQuery.eq('partner_id', effectivePartnerId);
+        }
+
+        // Query de convênios
+        let insurancesQuery = supabase
+          .from('insurances')
+          .select('*')
+          .order('name');
+
+        if (user.profile === 'parceiro' && effectivePartnerId) {
+          insurancesQuery = insurancesQuery.or(`partner_id.eq.${effectivePartnerId},partner_id.is.null`);
+        }
+
+        // Query de exames
+        let examsQuery = supabase
+          .from('exam_requests')
+          .select(`
+            *,
+            doctors(name),
+            insurances(name),
+            partners(name)
+          `)
+          .order('created_at', { ascending: false });
+
+        if (user.profile === 'parceiro' && effectivePartnerId) {
+          examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
+        }
+
+        // Query de parceiros (apenas admin)
+        let partnersPromise = Promise.resolve({ data: [], error: null });
+        if (user.profile === 'admin') {
+          partnersPromise = supabase
+            .from('partners')
+            .select('*')
+            .order('name');
+        }
+
+        // Executar todas as queries
+        const [
+          examsRes,
+          doctorsRes,
+          insurancesRes,
+          partnersRes
+        ] = await Promise.all([
+          examsQuery,
+          doctorsQuery,
+          insurancesQuery,
+          partnersPromise
+        ]);
+
+        if (examsRes.error) throw examsRes.error;
+        if (doctorsRes.error) throw doctorsRes.error;
+        if (insurancesRes.error) throw insurancesRes.error;
+        if (partnersRes.error) throw partnersRes.error;
+
+        if (isMounted) {
+          setExamRequests(examsRes.data || []);
+          setDoctors(doctorsRes.data || []);
+          setInsurances(insurancesRes.data || []);
+          setPartners(partnersRes.data || []);
+          setLoading(false);
+          
+          console.log('✅ Dados carregados com sucesso');
+        }
+
+      } catch (error) {
+        console.error('❌ Erro ao carregar dados:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
+    };
 
-      const effectivePartnerId = userPartnerId || currentPartner?.id;
+    loadData();
 
-      // Carregar médicos
-      let doctorsQuery = supabase
-        .from('doctors')
-        .select('*')
-        .order('name');
+    return () => {
+      isMounted = false;
+    };
+  }, [user]); // 🔥 Apenas user como dependência
 
-      if (user?.profile === 'parceiro' && effectivePartnerId) {
-        doctorsQuery = doctorsQuery.eq('partner_id', effectivePartnerId);
-      }
-
-      // Carregar convênios
-      let insurancesQuery = supabase
-        .from('insurances')
-        .select('*')
-        .order('name');
-
-      if (user?.profile === 'parceiro' && effectivePartnerId) {
-        insurancesQuery = insurancesQuery.or(`partner_id.eq.${effectivePartnerId},partner_id.is.null`);
-      }
-
-      // Carregar exames
-      let examsQuery = supabase
-        .from('exam_requests')
-        .select(`
-          *,
-          doctors(name),
-          insurances(name),
-          partners(name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (user?.profile === 'parceiro' && effectivePartnerId) {
-        examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
-      }
-
-      // Executar todas as queries em paralelo
-      const [examsRes, doctorsRes, insurancesRes] = await Promise.all([
-        examsQuery,
-        doctorsQuery,
-        insurancesQuery
-      ]);
-
-      if (examsRes.error) throw examsRes.error;
-      if (doctorsRes.error) throw doctorsRes.error;
-      if (insurancesRes.error) throw insurancesRes.error;
-
-      // Atualizar estados
-      setExamRequests(examsRes.data || []);
-      setDoctors(doctorsRes.data || []);
-      setInsurances(insurancesRes.data || []);
-
-      console.log('📊 Dados carregados com SUCESSO:', {
-        exames: examsRes.data?.length,
-        medicos: doctorsRes.data?.length,
-        convenios: insurancesRes.data?.length,
-        perfil: user?.profile
-      });
-
-    } catch (error) {
-      console.error('❌ Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, currentPartner]);
-
-  // Carregar partner e dados
-  const loadPartnerAndData = useCallback(async () => {
-    if (!user || hasLoadedRef.current) return;
+  // Função para criar exame
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
     
     try {
       setLoading(true);
-      console.log('🚀 Iniciando carregamento de dados...');
-
-      // Se for parceiro, carregar partner primeiro
-      if (user.profile === 'parceiro') {
-        console.log('🔍 Buscando partner_id do usuário...', user.id);
-        
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('partner_id, partners!inner(id, name)')
-          .eq('id', user.id)
-          .single();
-
-        if (userError) {
-          console.error('❌ Erro ao buscar partner_id:', userError);
-          setLoading(false);
-          return;
-        }
-
-        console.log('📋 Dados do usuário:', userData);
-
-        if (userData && userData.partner_id) {
-          const partner = {
-            id: userData.partner_id,
-            name: userData.partners?.name || 'Parceiro'
-          };
-          
-          console.log('✅ Partner carregado:', partner);
-          setCurrentPartner(partner);
-          
-          // Atualizar formData com partner_id
-          setFormData(prev => ({ ...prev, partner_id: partner.id }));
-          
-          // Carregar dados com partner
-          await loadData(partner.id);
-        } else {
-          console.error('❌ Usuário parceiro sem partner_id');
-          alert('Erro: Parceiro não vinculado. Contate o administrador.');
-          setLoading(false);
-        }
-      } else {
-        // Se for admin, carregar dados gerais
-        await loadData();
-      }
       
-      hasLoadedRef.current = true; // 🔥 Marca como já carregado
-      
-    } catch (error) {
-      console.error('Error in loadPartnerAndData:', error);
-      setLoading(false);
-    }
-  }, [user, loadData]);
-
-  // Executar apenas uma vez quando user mudar
-  useEffect(() => {
-    if (user && !hasLoadedRef.current) {
-      console.log('🔄 Usuário autenticado, carregando dados...');
-      loadPartnerAndData();
-    }
-    
-    // Cleanup function
-    return () => {
-      // Limpa qualquer timeout ou intervalo se houver
-      hasLoadedRef.current = false; // 🔥 Permite recarregar se mudar de usuário
-    };
-  }, [user, loadPartnerAndData]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      console.log('🏥 Criando encaminhamento de exame:', formData);
-
       const examData = {
         ...formData,
         insurance_id: formData.payment_type === 'convenio' ? formData.insurance_id : null,
@@ -231,26 +225,12 @@ export function ExamManagement() {
 
       if (error) throw error;
 
-      // Recarregar dados SEM resetar o hasLoadedRef
-      if (user?.profile === 'parceiro' && currentPartner) {
-        await loadData(currentPartner.id);
-      } else {
-        await loadData();
-      }
-
+      // Recarregar dados
+      await loadFreshData();
+      
       setShowForm(false);
-      // Reset do formulário (mas mantém partner_id)
-      setFormData(prev => ({
-        patient_name: '',
-        birth_date: '',
-        consultation_date: '',
-        doctor_id: '',
-        exam_type: '',
-        payment_type: 'particular',
-        insurance_id: '',
-        partner_id: prev.partner_id, // 🔥 Mantém o partner_id
-        phone: ''
-      }));
+      resetFormData();
+      
       alert('Exame encaminhado com sucesso!');
     } catch (error) {
       console.error('Error creating exam request:', error);
@@ -258,9 +238,59 @@ export function ExamManagement() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData]);
 
-  const handleConductUpdate = async (examId: string) => {
+  // Função auxiliar para recarregar dados
+  const loadFreshData = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const effectivePartnerId = currentPartner?.id || 
+        (user.profile === 'parceiro' ? user.id : undefined);
+
+      // Query de exames
+      let examsQuery = supabase
+        .from('exam_requests')
+        .select(`
+          *,
+          doctors(name),
+          insurances(name),
+          partners(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (user.profile === 'parceiro' && effectivePartnerId) {
+        examsQuery = examsQuery.eq('partner_id', effectivePartnerId);
+      }
+
+      const examsRes = await examsQuery;
+      if (examsRes.error) throw examsRes.error;
+      
+      setExamRequests(examsRes.data || []);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [user, currentPartner]);
+
+  // Função para resetar form data
+  const resetFormData = useCallback(() => {
+    setFormData({
+      patient_name: '',
+      birth_date: '',
+      consultation_date: '',
+      doctor_id: '',
+      exam_type: '',
+      payment_type: 'particular',
+      insurance_id: '',
+      partner_id: currentPartner?.id || '',
+      phone: ''
+    });
+  }, [currentPartner]);
+
+  // Função para atualizar conduta
+  const handleConductUpdate = useCallback(async () => {
+    if (!selectedExam) return;
+    
     try {
       const { error } = await supabase
         .from('exam_requests')
@@ -268,32 +298,32 @@ export function ExamManagement() {
           conduct: conductData.conduct,
           conduct_observations: conductData.conduct_observations
         })
-        .eq('id', examId);
+        .eq('id', selectedExam.id);
 
       if (error) throw error;
 
-      // Recarregar dados SEM resetar o hasLoadedRef
-      if (user?.profile === 'parceiro' && currentPartner) {
-        await loadData(currentPartner.id);
-      } else {
-        await loadData();
-      }
-
+      await loadFreshData();
+      
       setSelectedExam(null);
       setShowConduct(false);
       setConductData({
         conduct: '',
         conduct_observations: ''
       });
+      
       alert('Conduta registrada com sucesso!');
     } catch (error) {
       console.error('Error updating conduct:', error);
       alert('Erro ao registrar conduta');
     }
-  };
+  }, [selectedExam, conductData, loadFreshData]);
 
-  // Cores dos status
-  const getStatusColor = (status: string) => {
+  // Valores memoizados
+  const examCountText = useMemo(() => {
+    return `${examRequests.length} exame${examRequests.length !== 1 ? 's' : ''} encaminhado${examRequests.length !== 1 ? 's' : ''}${currentPartner ? ` por ${currentPartner.name}` : ''}`;
+  }, [examRequests.length, currentPartner]);
+
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'encaminhado':
         return 'bg-blue-100 text-blue-800';
@@ -302,16 +332,9 @@ export function ExamManagement() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
-  };
+  }, []);
 
-  // Labels dos status
-  const statusLabels = {
-    encaminhado: 'Encaminhado ao CTR',
-    executado: 'Executado'
-  };
-
-  // Cores para conduta
-  const getConductColor = (conduct: string) => {
+  const getConductColor = useCallback((conduct: string) => {
     switch (conduct) {
       case 'cirurgica':
         return 'bg-red-100 text-red-800';
@@ -320,19 +343,19 @@ export function ExamManagement() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
-  };
+  }, []);
 
-  // Labels para conduta
-  const conductLabels = {
+  const statusLabels = useMemo(() => ({
+    encaminhado: 'Encaminhado ao CTR',
+    executado: 'Executado'
+  }), []);
+
+  const conductLabels = useMemo(() => ({
     cirurgica: 'Cirúrgica',
     ambulatorial: 'Ambulatorial'
-  };
+  }), []);
 
-  // 🔥 Memoize valores computados para evitar re-renders
-  const examCountText = React.useMemo(() => {
-    return `${examRequests.length} exame${examRequests.length !== 1 ? 's' : ''} encaminhado${examRequests.length !== 1 ? 's' : ''}${currentPartner ? ` por ${currentPartner.name}` : ''}`;
-  }, [examRequests.length, currentPartner]);
-
+  // Loading state
   if (loading && examRequests.length === 0) {
     return (
       <div className="flex justify-center py-12">
@@ -341,24 +364,12 @@ export function ExamManagement() {
     );
   }
 
-  if (showForm) {
-    console.log('🔍 Formulário ABERTO - Debug:', {
-      medicos_disponiveis: doctors.length,
-      convenios_disponiveis: insurances.length,
-      lista_convenios: insurances,
-      perfil_usuario: user?.profile,
-      current_partner: currentPartner
-    });
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Encaminhamento de Exames</h2>
-          <p className="text-sm text-gray-600">
-            {examCountText}
-          </p>
+          <p className="text-sm text-gray-600">{examCountText}</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
@@ -370,6 +381,7 @@ export function ExamManagement() {
         </button>
       </div>
 
+      {/* Formulário de novo exame */}
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Encaminhar Novo Exame</h3>
@@ -397,13 +409,14 @@ export function ExamManagement() {
           )}
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Campos do formulário */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente</label>
               <input
                 type="text"
                 required
                 value={formData.patient_name}
-                onChange={(e) => setFormData({ ...formData, patient_name: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, patient_name: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -413,7 +426,7 @@ export function ExamManagement() {
                 type="date"
                 required
                 value={formData.birth_date}
-                onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, birth_date: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -423,7 +436,7 @@ export function ExamManagement() {
                 type="date"
                 required
                 value={formData.consultation_date}
-                onChange={(e) => setFormData({ ...formData, consultation_date: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, consultation_date: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -432,7 +445,7 @@ export function ExamManagement() {
               <select
                 required
                 value={formData.doctor_id}
-                onChange={(e) => setFormData({ ...formData, doctor_id: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, doctor_id: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 disabled={doctors.length === 0}
               >
@@ -443,11 +456,6 @@ export function ExamManagement() {
                   </option>
                 ))}
               </select>
-              {doctors.length === 0 && user?.profile === 'parceiro' && (
-                <p className="text-xs text-red-600 mt-1">
-                  Cadastre médicos em "Gestão de Médicos" primeiro
-                </p>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Exame</label>
@@ -455,7 +463,7 @@ export function ExamManagement() {
                 type="text"
                 required
                 value={formData.exam_type}
-                onChange={(e) => setFormData({ ...formData, exam_type: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, exam_type: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Ex: Raio-X, Ultrassom"
               />
@@ -473,33 +481,31 @@ export function ExamManagement() {
                 placeholder="(xx) xxxxx-xxxx"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Formato: (xx) xxxxx-xxxx
-              </p>
+              <p className="text-xs text-gray-500 mt-1">Formato: (xx) xxxxx-xxxx</p>
             </div>
+            
             {user?.profile === 'admin' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Parceiro</label>
                 <select
                   required
                   value={formData.partner_id}
-                  onChange={(e) => setFormData({ ...formData, partner_id: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, partner_id: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Selecione um parceiro</option>
                   {partners.map((partner) => (
-                    <option key={partner.id} value={partner.id}>
-                      {partner.name}
-                    </option>
+                    <option key={partner.id} value={partner.id}>{partner.name}</option>
                   ))}
                 </select>
               </div>
             )}
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Pagamento</label>
               <select
                 value={formData.payment_type}
-                onChange={(e) => setFormData({ ...formData, payment_type: e.target.value as 'particular' | 'convenio' })}
+                onChange={(e) => setFormData(prev => ({ ...prev, payment_type: e.target.value as 'particular' | 'convenio' }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="particular">Particular</option>
@@ -507,38 +513,28 @@ export function ExamManagement() {
                   {insurances.length === 0 ? 'Convênio (indisponível)' : 'Convênio'}
                 </option>
               </select>
-              {insurances.length === 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Nenhum convênio cadastrado no sistema
-                </p>
-              )}
             </div>
+            
             {formData.payment_type === 'convenio' && (
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Convênio {insurances.length > 0 && `(${insurances.length} disponível)`}
+                  Convênio
                 </label>
                 <select
                   required
                   value={formData.insurance_id}
-                  onChange={(e) => setFormData({ ...formData, insurance_id: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, insurance_id: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   disabled={insurances.length === 0}
                 >
                   <option value="">{insurances.length === 0 ? 'Nenhum convênio cadastrado' : 'Selecione um convênio'}</option>
                   {insurances.map((insurance) => (
-                    <option key={insurance.id} value={insurance.id}>
-                      {insurance.name}
-                    </option>
+                    <option key={insurance.id} value={insurance.id}>{insurance.name}</option>
                   ))}
                 </select>
-                {insurances.length === 0 && user?.profile === 'parceiro' && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Cadastre convênios em "Gestão de Convênios" primeiro
-                  </p>
-                )}
               </div>
             )}
+            
             <div className="md:col-span-3 flex space-x-3">
               <button
                 type="submit"
@@ -559,7 +555,7 @@ export function ExamManagement() {
         </div>
       )}
 
-      {/* Modal para Conduta */}
+      {/* Modal de conduta */}
       {showConduct && selectedExam && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Registrar Conduta</h3>
@@ -569,7 +565,7 @@ export function ExamManagement() {
               <select
                 required
                 value={conductData.conduct}
-                onChange={(e) => setConductData({ ...conductData, conduct: e.target.value as 'cirurgica' | 'ambulatorial' })}
+                onChange={(e) => setConductData(prev => ({ ...prev, conduct: e.target.value as 'cirurgica' | 'ambulatorial' }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Selecione a conduta</option>
@@ -582,14 +578,14 @@ export function ExamManagement() {
               <textarea
                 rows={4}
                 value={conductData.conduct_observations}
-                onChange={(e) => setConductData({ ...conductData, conduct_observations: e.target.value })}
+                onChange={(e) => setConductData(prev => ({ ...prev, conduct_observations: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Descreva as observações da conduta..."
               />
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => handleConductUpdate(selectedExam.id)}
+                onClick={handleConductUpdate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Confirmar Conduta
@@ -598,10 +594,7 @@ export function ExamManagement() {
                 onClick={() => {
                   setShowConduct(false);
                   setSelectedExam(null);
-                  setConductData({
-                    conduct: '',
-                    conduct_observations: ''
-                  });
+                  setConductData({ conduct: '', conduct_observations: '' });
                 }}
                 className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
               >
@@ -612,69 +605,40 @@ export function ExamManagement() {
         </div>
       )}
 
+      {/* Tabela de exames */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Paciente
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Telefone
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Nascimento
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Data Consulta
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Médico
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Exame
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Conduta
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tipo
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paciente</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Telefone</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Nascimento</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Consulta</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Médico</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exame</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conduta</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                 {user?.profile === 'admin' && (
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Parceiro
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parceiro</th>
                 )}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ações
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {examRequests.map((exam) => (
                 <tr key={exam.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {exam.patient_name}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {exam.phone || 'Não informado'}
-                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{exam.patient_name}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{exam.phone || 'Não informado'}</td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(exam.birth_date).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(exam.consultation_date).toLocaleDateString('pt-BR')}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {exam.doctors?.name || 'N/A'}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {exam.exam_type}
-                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{exam.doctors?.name || 'N/A'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{exam.exam_type}</td>
                   <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(exam.status)}`}>
                       {statusLabels[exam.status as keyof typeof statusLabels]}
@@ -682,18 +646,13 @@ export function ExamManagement() {
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap">
                     {exam.conduct ? (
-                      <div 
-                        className="relative group"
-                        title={exam.conduct_observations || 'Sem observações'}
-                      >
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)} cursor-help`}>
+                      <div className="relative group">
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getConductColor(exam.conduct)}`}>
                           {conductLabels[exam.conduct as keyof typeof conductLabels]}
                         </span>
-                        {/* Tooltip para observações */}
                         {exam.conduct_observations && (
                           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 max-w-xs whitespace-normal break-words">
                             {exam.conduct_observations}
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                           </div>
                         )}
                       </div>
@@ -705,29 +664,25 @@ export function ExamManagement() {
                     {exam.payment_type === 'particular' ? 'Particular' : `Convênio (${exam.insurances?.name || 'N/A'})`}
                   </td>
                   {user?.profile === 'admin' && (
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {exam.partners?.name || 'N/A'}
-                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{exam.partners?.name || 'N/A'}</td>
                   )}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex space-x-2">
-                      {exam.status === 'executado' && (
-                        <button
-                          onClick={() => {
-                            setSelectedExam(exam);
-                            setConductData({
-                              conduct: exam.conduct || '',
-                              conduct_observations: exam.conduct_observations || ''
-                            });
-                            setShowConduct(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 transition-colors"
-                          title="Registrar Conduta"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                    {exam.status === 'executado' && (
+                      <button
+                        onClick={() => {
+                          setSelectedExam(exam);
+                          setConductData({
+                            conduct: exam.conduct || '',
+                            conduct_observations: exam.conduct_observations || ''
+                          });
+                          setShowConduct(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 transition-colors"
+                        title="Registrar Conduta"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
