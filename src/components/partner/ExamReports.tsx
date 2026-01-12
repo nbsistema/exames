@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, FileText, Filter, Calendar, User, Building, RefreshCcw } from 'lucide-react';
+import { Download, FileText, Filter, Calendar, User, Building } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
